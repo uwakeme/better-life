@@ -1,0 +1,17 @@
+# ---- 依赖 ----
+node_modules/
+
+# ---- 微信开发者工具 ----
+# 本机私有配置（含个人路径与个人设置），不入库
+project.private.config.json
+miniprogram_npm/
+
+# ---- 本地环境与缓存 ----
+.env
+.env.*
+__pycache__/
+*.py[cod]
+
+# ---- 系统与编辑器 ----
+.DS_Store
+Thumbs.db

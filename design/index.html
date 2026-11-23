@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>life-better · 前端原型 · 便签墙</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.92em' font-size='88'>📌</text></svg>">
+<link rel="stylesheet" href="assets/shell.css">
+<link rel="stylesheet" href="assets/dir-c.css">
+</head>
+<body>
+
+<header class="wb-head">
+  <div class="wb-brand">
+    <span class="wb-logo">life&#8209;better</span>
+    <span class="wb-sub">前端原型 · 便签墙方案</span>
+    <span class="wb-note">演示数据，非真实内容</span>
+  </div>
+  <nav class="wb-tabs" id="pageTabs" aria-label="页面"></nav>
+  <div class="wb-scenes">
+    <div class="wb-switch" id="sceneTabs" aria-label="场景"></div>
+    <div class="wb-switch" id="roleTabs" aria-label="身份"></div>
+  </div>
+</header>
+
+<main class="wb-grid" id="grid"></main>
+
+<footer class="wb-foot">
+  <span>提示：顶部页签切换页面；上方「场景」切换数据状态，「身份」切换管理员 / 普通用户；页面内点卡片可继续往下钻取，点「← 回到…」返回当前页签。</span>
+</footer>
+
+<script src="assets/data.js"></script>
+<script src="assets/js/c-1.js"></script>
+<script src="assets/js/c-2.js"></script>
+<script src="assets/js/c-3.js"></script>
+<script src="assets/shell.js"></script>
+</body>
+</html>

@@ -1,0 +1,174 @@
+/* ==========================================================================
+   life-better 原型工作台 · 外壳样式
+   外壳只负责预览装置本身（页签、场景、手机框），不参与任何业务设计。
+   方案已定为「C · 便签墙」，故只有单列排版。
+   ========================================================================== */
+
+:root {
+  --wb-bg: #16181b;
+  --wb-panel: #1d2024;
+  --wb-line: #2c3035;
+  --wb-line-2: #3a3f45;
+  --wb-text: #e6e8ea;
+  --wb-dim: #9aa1a8;
+  --wb-dimmer: #6b7278;
+  --wb-accent: #c8a15a;
+  --wb-radius: 10px;
+  --phone-w: 375px;
+  --phone-h: 780px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--wb-bg);
+  color: var(--wb-text);
+  font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+body { padding-bottom: 28px; }
+
+/* ---------- 顶部 ---------- */
+.wb-head {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: linear-gradient(180deg, #1a1d21 0%, #16181b 100%);
+  border-bottom: 1px solid var(--wb-line);
+  padding: 12px 20px 0;
+}
+.wb-brand { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.wb-logo { font-size: 17px; font-weight: 700; letter-spacing: .04em; }
+.wb-sub { color: var(--wb-dim); font-size: 12.5px; }
+.wb-note {
+  font-size: 11px; color: #d8b978; border: 1px solid #4a3f27;
+  background: #241f14; padding: 1px 7px; border-radius: 99px;
+}
+
+.wb-tabs {
+  display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px;
+  scrollbar-width: thin; padding-bottom: 2px;
+}
+.wb-tabs::-webkit-scrollbar { height: 5px; }
+.wb-tabs::-webkit-scrollbar-thumb { background: #34383d; border-radius: 9px; }
+
+.wb-tab {
+  flex: 0 0 auto; border: 1px solid var(--wb-line); background: #1b1e22;
+  color: var(--wb-dim); padding: 5px 11px; border-radius: 7px 7px 0 0;
+  font-size: 12.5px; cursor: pointer; white-space: nowrap;
+  border-bottom: none; transition: color .12s, background .12s;
+}
+.wb-tab:hover { color: var(--wb-text); }
+.wb-tab[aria-selected="true"] {
+  background: #23272c; color: #fff; border-color: var(--wb-line-2);
+  box-shadow: inset 0 2px 0 var(--wb-accent);
+}
+
+.wb-scenes { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; padding: 9px 0 10px; }
+.wb-switch { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wb-scenes-label { font-size: 11.5px; color: var(--wb-dimmer); letter-spacing: .08em; }
+.wb-scene {
+  border: 1px solid var(--wb-line); background: transparent; color: var(--wb-dim);
+  font-size: 12px; padding: 3px 10px; border-radius: 99px; cursor: pointer;
+}
+.wb-scene:hover { color: var(--wb-text); border-color: var(--wb-line-2); }
+.wb-scene[aria-pressed="true"] {
+  background: #23272c; color: #fff; border-color: #4a5057;
+}
+
+/* ---------- 单列预览 ---------- */
+.wb-grid {
+  display: grid;
+  grid-template-columns: var(--phone-w);
+  justify-content: center;
+  gap: 18px;
+  padding: 18px 20px 8px;
+  align-items: start;
+}
+
+.wb-col { min-width: var(--phone-w); }
+
+.wb-colhead {
+  display: flex; align-items: baseline; gap: 10px; margin-bottom: 9px;
+  padding: 0 2px; flex-wrap: wrap;
+}
+.wb-colname { font-size: 13px; font-weight: 700; letter-spacing: .02em; }
+.wb-coltag { font-size: 11.5px; color: var(--wb-dimmer); line-height: 1.4; }
+
+.wb-crumb {
+  display: none; align-items: center; gap: 8px; font-size: 11.5px;
+  color: var(--wb-dim); margin: 0 2px 8px;
+}
+.wb-crumb.on { display: flex; }
+.wb-crumb button {
+  background: none; border: none; color: var(--wb-accent); cursor: pointer;
+  font-family: inherit; font-size: 11.5px; padding: 0;
+}
+
+.wb-missing { padding: 24px 16px; color: var(--wb-dim); font-size: 13px; }
+
+/* ---------- 手机框 ---------- */
+.phone {
+  width: var(--phone-w);
+  height: var(--phone-h);
+  border-radius: 34px;
+  background: #0c0d0f;
+  border: 1px solid #33373c;
+  box-shadow: 0 18px 44px rgba(0,0,0,.45);
+  overflow: hidden;
+  position: relative;
+  display: flex; flex-direction: column;
+}
+
+.lb-status {
+  flex: 0 0 auto; height: 34px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 22px; font-size: 11.5px; font-weight: 600;
+  background: var(--st-bg, #eceeed); color: var(--st-fg, #16181a);
+  letter-spacing: .02em;
+}
+.lb-status .st-r { display: flex; align-items: center; gap: 5px; }
+.lb-status svg { display: block; }
+
+/* 微信胶囊按钮占位：真机上它在导航栏右上角，页面自己的按钮不能压上去 */
+.lb-capsule {
+  position: absolute; right: 6px; top: 40px; z-index: 18;
+  width: 87px; height: 32px; border-radius: 16px;
+  border: 1px solid rgba(37, 48, 63, .1);
+  background: rgba(255, 255, 255, .58);
+  display: flex; align-items: center; justify-content: space-around;
+  color: var(--ink-2, #3f4a57); font-size: 12px; line-height: 1;
+  pointer-events: none;
+}
+.lb-capsule .cap-dots { letter-spacing: 1px; }
+.lb-capsule .cap-circle { font-size: 15px; }
+
+.lb-screen {
+  flex: 1 1 auto; overflow-y: auto; overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  background: var(--sc-bg, #fff);
+}
+.lb-screen::-webkit-scrollbar { width: 0; }
+
+/* ---------- 页脚 ---------- */
+.wb-foot {
+  padding: 10px 20px 0; color: var(--wb-dimmer); font-size: 11.5px; line-height: 1.7;
+}
+
+/* ==========================================================================
+   方向自己的一点基础（仅限图标尺寸与可访问性）
+   方向的具体样式一律写在 dir-c.css 里，不在此处污染。
+   ========================================================================== */
+.lb-screen .ic { width: 1em; height: 1em; display: inline-block; vertical-align: -0.13em; }
+.lb-screen :focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.lb-screen [data-nav] { cursor: pointer; }
+
+@media (max-width: 460px) {
+  .wb-grid { padding: 14px 8px 8px; }
+  .wb-head { padding-left: 12px; padding-right: 12px; }
+  .wb-foot { padding-left: 12px; padding-right: 12px; }
+}
