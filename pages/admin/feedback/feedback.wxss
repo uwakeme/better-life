@@ -1,0 +1,35 @@
+.page { min-height: 100vh; padding-bottom: 60rpx; }
+
+.box { padding: 8rpx var(--pad-rpx) 40rpx; }
+.fbcard {
+  background: var(--card);
+  border-radius: var(--r-blk-rpx);
+  padding: 24rpx 26rpx;
+  margin-bottom: 20rpx;
+  box-shadow: var(--sh-sm-rpx) var(--shadow-sm);
+}
+.fbcard-h { display: flex; align-items: center; gap: 14rpx; }
+.fbcard-k {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--s-wheat);
+  border-radius: 999rpx;
+  padding: 4rpx 18rpx;
+}
+.fbcard-s { font-size: 24rpx; color: var(--ink-3); }
+.fbcard-s.st-accepted { color: var(--good-ink); }
+.fbcard-s.st-replied { color: var(--link-ink); }
+.fbcard-d { font-size: 23rpx; color: var(--ink-3); }
+.fbcard-c { margin-top: 14rpx; font-size: 27rpx; line-height: 1.75; color: var(--ink); }
+.fbcard-m { margin-top: 12rpx; font-size: 24rpx; color: var(--ink-3); display: flex; gap: 18rpx; }
+.fbcard-link { color: var(--link-ink); }
+.fbcard-r {
+  margin-top: 16rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 24rpx;
+  background: var(--paper-2);
+}
+.fbcard-rl { display: block; font-size: 23rpx; color: var(--ink-3); margin-bottom: 6rpx; }
+.fbcard-rv { font-size: 26rpx; line-height: 1.7; color: var(--ink); }
+.fbcard-ops { margin-top: 18rpx; }

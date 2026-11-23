@@ -1,0 +1,74 @@
+<view class="tk page">
+  <nav-bar title="生活经验库" show-back="{{false}}" />
+
+  <view class="search" bindtap="goSearch" hover-class="tap">
+    <image class="search-ic" src="/assets/icons/search.png" />
+    <text class="search-t">搜一条用得上的经验</text>
+    <view class="search-go">搜</view>
+  </view>
+
+  <view wx:if="{{source === 'demo' && !loading}}" class="notice">
+    当前为演示数据，检索结果是写死的样例。
+  </view>
+
+  <!-- 九个领域：横向一条，首屏留得下经验卡 -->
+  <scroll-view class="rail-scroll" scroll-x="{{true}}" show-scrollbar="{{false}}">
+    <view class="rail">
+      <view
+        wx:for="{{categories}}"
+        wx:key="id"
+        class="cat"
+        data-id="{{item.id}}"
+        bindtap="goCategory"
+        hover-class="tap"
+      >
+        <text class="cat-num">{{item.id}}</text>
+        <image class="cat-ic" src="/assets/icons/{{item.icon}}.png" />
+        <text class="cat-n">{{item.name}}</text>
+        <text class="cat-c">{{item.count}} 张便签</text>
+      </view>
+    </view>
+  </scroll-view>
+
+  <view wx:if="{{showAllCats}}" class="allcats">
+    <view
+      wx:for="{{categories}}"
+      wx:key="id"
+      class="allcat"
+      data-id="{{item.id}}"
+      bindtap="goCategory"
+      hover-class="tap"
+    >
+      <text class="cat-n">{{item.name}}</text>
+      <text class="cat-c">{{item.desc}}</text>
+    </view>
+  </view>
+
+  <view class="filter-bar">
+    <text class="filter-now">共 {{total}} 条经验</text>
+    <view class="grow"></view>
+    <text class="pill {{sort === 'updated' ? 'on' : ''}}" data-k="updated" bindtap="setSort" hover-class="tap">最近更新</text>
+    <text class="pill {{sort === 'fav' ? 'on' : ''}}" data-k="fav" bindtap="setSort" hover-class="tap">收藏最多</text>
+  </view>
+
+  <state-view wx:if="{{loading}}" type="loading" />
+  <state-view
+    wx:elif="{{error}}"
+    type="error"
+    title="网络不太顺畅，没连上"
+    text="{{error}}"
+    action-text="重新加载"
+    bind:action="retry"
+  />
+  <state-view
+    wx:elif="{{!cards.length}}"
+    type="empty"
+    title="墙上还空着"
+    text="这个库还没有收录内容，过一阵再来看看。"
+    action-text="去搜索"
+    bind:action="goSearch"
+  />
+  <view wx:else class="list">
+    <experience-card wx:for="{{cards}}" wx:key="id" card="{{item}}" bind:open="openExp" />
+  </view>
+</view>

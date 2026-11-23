@@ -1,0 +1,131 @@
+[
+  {
+    "id": 1,
+    "targetType": "experience",
+    "targetId": 1,
+    "kind": "correction",
+    "content": "我油头用了两年高硅洗发水，也没觉得更难洗。是不是要看具体配方？",
+    "status": "pending",
+    "reply": "",
+    "repliedAt": null,
+    "createdAt": "2026-11-17",
+    "author": "匿名用户 0f2a",
+    "openid": "demo-user",
+    "mediaStatus": "checking",
+    "images": [
+      {
+        "mediaId": "demo-101",
+        "url": "/assets/placeholder/photo-1.png",
+        "name": "洗发水成分表截图"
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "targetType": "experience",
+    "targetId": 11,
+    "kind": "correction",
+    "content": "邮政局的说法改了，现在丢件必须先在 APP 上报案生成工单，纸质证明已经没有出了。",
+    "status": "accepted",
+    "reply": "已核实并更新第 1 条要点，补充了 APP 报案入口。",
+    "repliedAt": "2026-11-16",
+    "createdAt": "2026-11-15",
+    "author": "匿名用户 91bd",
+    "openid": "demo-user-b",
+    "mediaStatus": "none",
+    "images": []
+  },
+  {
+    "id": 3,
+    "targetType": "experience",
+    "targetId": 10,
+    "kind": "question",
+    "content": "照着说的看了箭头安心多了。不过还想问一句：如果同一个指标连续两次都偏高，是不是就得去挂专科门诊了？",
+    "status": "accepted",
+    "reply": "连续两次异常建议挂对应科室的普通门诊，带上报告单就行，不用挂急诊。",
+    "repliedAt": "2026-11-19",
+    "createdAt": "2026-11-12",
+    "author": "匿名用户 3c07",
+    "openid": "demo-user",
+    "mediaStatus": "passed",
+    "images": [
+      {
+        "mediaId": "demo-301",
+        "url": "/assets/placeholder/photo-1.png",
+        "name": "体检报告截图"
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "targetType": "project",
+    "targetId": null,
+    "kind": "suggestion",
+    "content": "希望能加一个「常见误会的对照表」，比如「无硅油=温和」这种。",
+    "status": "pending",
+    "reply": "",
+    "repliedAt": null,
+    "createdAt": "2026-11-18",
+    "author": "匿名用户 5e21",
+    "openid": "demo-user-c",
+    "mediaStatus": "none",
+    "images": []
+  },
+  {
+    "id": 5,
+    "targetType": "experience",
+    "targetId": 13,
+    "kind": "question",
+    "content": "年付会员按天折算退款，平台只按整月折算，这算合理吗？",
+    "status": "replied",
+    "reply": "按整月折算确实不合理，我们记下了，等平台有明确说法再来更新这条。",
+    "repliedAt": "2026-11-19",
+    "createdAt": "2026-11-18",
+    "author": "匿名用户 77aa",
+    "openid": "demo-user-d",
+    "mediaStatus": "none",
+    "images": []
+  },
+  {
+    "id": 6,
+    "targetType": "experience",
+    "targetId": 4,
+    "kind": "correction",
+    "content": "我家用的就是同一瓶洗手液和沐浴露，没觉得有问题，这条是不是太绝对了？",
+    "status": "ignored",
+    "reply": "你说得对，这条的结论写得太满，我改成「分开用更省」而不是「一定要分开」。",
+    "repliedAt": "2026-11-19",
+    "createdAt": "2026-11-18",
+    "author": "匿名用户 2c8f",
+    "openid": "demo-user-e",
+    "mediaStatus": "rejected",
+    "images": [
+      {
+        "mediaId": "demo-601",
+        "url": "/assets/placeholder/photo-1.png",
+        "name": "商品页截图"
+      }
+    ]
+  },
+  {
+    "id": 7,
+    "targetType": "experience",
+    "targetId": 4,
+    "kind": "correction",
+    "content": "这瓶洗手液我用了三个月，泵头已经开始渗水了，是不是批次问题？",
+    "status": "pending",
+    "reply": "",
+    "repliedAt": null,
+    "createdAt": "2026-11-19",
+    "author": "匿名用户 6f0c",
+    "openid": "demo-user",
+    "mediaStatus": "rejected",
+    "images": [
+      {
+        "mediaId": "demo-701",
+        "url": "/assets/placeholder/photo-1.png",
+        "name": "泵头渗水照片"
+      }
+    ]
+  }
+]

@@ -1,0 +1,73 @@
+<view class="tk page">
+  <nav-bar title="反馈" />
+
+  <!-- 管理员不提交反馈：发现问题直接改内容 -->
+  <block wx:if="{{isAdmin}}">
+    <view class="notice">
+      这个库的每条经验都由管理员自己维护，发现问题直接改就行，不需要提交反馈。
+    </view>
+    <view class="actions">
+      <button class="btn pri" bindtap="goAdminFeedback" hover-class="tap">去反馈盒处理读者反馈</button>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="kind-desc">
+      反馈只有你和这个库的维护者看得到，不会公开。选择一个类型，把情况写清楚就行。
+    </view>
+
+    <view class="form">
+      <view wx:if="{{targetType === 'experience'}}" class="field">
+        <view class="field-l">关于这条经验</view>
+        <view class="field-in">{{targetTitle || '（当前经验）'}}</view>
+      </view>
+
+      <view class="field">
+        <view class="field-l">反馈类型<text class="req">*</text></view>
+        <view class="fb-choices">
+          <text
+            wx:for="{{kinds}}"
+            wx:key="key"
+            class="pick {{kind === item.key ? 'on' : ''}}"
+            data-k="{{item.key}}"
+            bindtap="setKind"
+            hover-class="tap"
+          >{{item.name}}</text>
+        </view>
+      </view>
+
+      <view class="field">
+        <view class="field-l">要说的内容<text class="req">*</text></view>
+        <textarea
+          class="textarea"
+          placeholder="哪里不对、缺了什么、想问什么，写具体一点更容易被处理。"
+          value="{{content}}"
+          bindinput="onContent"
+          maxlength="-1"
+          auto-height="{{false}}"
+        />
+        <view wx:if="{{hint}}" class="fb-hint">{{hint}}</view>
+      </view>
+
+      <view class="field">
+        <view class="field-l">附图（最多 {{maxImages}} 张）</view>
+        <view class="imgs">
+          <view wx:for="{{images}}" wx:key="url" class="img">
+            <image class="img-pic" src="{{item.url}}" mode="aspectFill" />
+            <view class="img-x" data-i="{{index}}" bindtap="removeImage">×</view>
+          </view>
+          <view wx:if="{{images.length < maxImages}}" class="img-add" bindtap="chooseImage" hover-class="tap">
+            ＋ 图片
+          </view>
+        </view>
+        <view class="fb-tip">带图的反馈会先落库、图片标为审核中，审核通过后才展示图片。</view>
+      </view>
+
+      <view class="actions">
+        <button class="btn pri" bindtap="submit" hover-class="tap" disabled="{{submitting}}">
+          {{submitting ? '提交中' : '提交反馈'}}
+        </button>
+      </view>
+    </view>
+  </block>
+</view>

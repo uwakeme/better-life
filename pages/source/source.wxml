@@ -1,0 +1,31 @@
+<view class="tk page">
+  <nav-bar title="依据来源" />
+
+  <view wx:if="{{title}}" class="sec-h">
+    <view class="sec-h-t">{{title}}</view>
+    <view class="sec-h-s">共 {{total}} 条依据</view>
+  </view>
+
+  <state-view wx:if="{{loading}}" type="loading" />
+  <state-view
+    wx:elif="{{error}}"
+    type="error"
+    title="网络不太顺畅，没连上"
+    text="{{error}}"
+    action-text="重新加载"
+    bind:action="retry"
+  />
+  <view wx:else class="map">
+    <view wx:for="{{groups}}" wx:key="pointId" class="map-group">
+      <view class="map-p">
+        <text class="map-pn">{{index + 1}}</text>
+        <text class="map-pt">{{item.pointTitle}}</text>
+        <text class="map-pc">{{item.sources.length}} 条依据</text>
+      </view>
+      <block wx:if="{{item.sources.length}}">
+        <source-item wx:for="{{item.sources}}" wx:for-item="src" wx:key="id" source="{{src}}" />
+      </block>
+      <text wx:else class="map-empty">这条要点还没有关联依据。</text>
+    </view>
+  </view>
+</view>

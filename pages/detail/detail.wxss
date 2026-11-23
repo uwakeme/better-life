@@ -1,0 +1,59 @@
+.page {
+  min-height: 100vh;
+  /* 底部操作条是吸底的，正文要留出它的高度 */
+  padding-bottom: 190rpx;
+}
+
+.detail-tags { color: var(--ink-3); }
+
+.notes-link {
+  margin: 4rpx var(--pad-rpx) 8rpx;
+  background: var(--card);
+  border-radius: var(--r-strip-rpx);
+  padding: 24rpx 26rpx;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  box-shadow: var(--sh-sm-rpx) var(--shadow-sm);
+}
+.notes-link-t { flex: 1; font-size: 27rpx; font-weight: 700; color: var(--ink); }
+.notes-link-x { font-size: 32rpx; color: var(--ink-3); }
+
+.page-end {
+  padding: 20rpx var(--pad-rpx) 40rpx;
+  font-size: 24rpx;
+  color: var(--ink-3);
+  line-height: 1.7;
+}
+
+/* ---------- 吸底操作条 ---------- */
+.actionbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  background: var(--card);
+  padding: 14rpx var(--pad-rpx);
+  padding-bottom: calc(14rpx + constant(safe-area-inset-bottom));
+  padding-bottom: calc(14rpx + env(safe-area-inset-bottom));
+  box-shadow: 0 -4rpx 20rpx var(--shadow-sm);
+}
+.vote { display: flex; align-items: center; gap: 14rpx; }
+.vote-btn {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  border-radius: 999rpx;
+  background: var(--paper-2);
+  padding: 12rpx 22rpx;
+  font-size: 26rpx;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.vote-btn.on { background: var(--ink); color: #fff; }
+.vote-img { width: 28rpx; height: 28rpx; }
+.vote-n { font-size: 24rpx; opacity: .85; }

@@ -1,0 +1,10 @@
+.page { min-height: 100vh; padding-bottom: 60rpx; }
+.notice-line { font-size: 25rpx; line-height: 1.8; }
+.edit-blk {
+  display: block;
+  margin-top: 20rpx;
+  padding: 22rpx 24rpx;
+  border-radius: 28rpx;
+  background: var(--paper-2);
+}
+.edit-row-head { display: flex; align-items: center; gap: 14rpx; margin-bottom: 8rpx; }

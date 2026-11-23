@@ -1,0 +1,9 @@
+{
+  "usingComponents": {
+    "nav-bar": "/components/nav-bar/nav-bar",
+    "experience-card": "/components/experience-card/experience-card",
+    "state-view": "/components/state-view/state-view",
+    "tag-pills": "/components/tag-pills/tag-pills"
+  },
+  "navigationBarTitleText": "找经验"
+}

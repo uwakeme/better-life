@@ -1,0 +1,8 @@
+{
+  "usingComponents": {
+    "nav-bar": "/components/nav-bar/nav-bar",
+    "source-item": "/components/source-item/source-item",
+    "state-view": "/components/state-view/state-view"
+  },
+  "navigationBarTitleText": "依据来源"
+}

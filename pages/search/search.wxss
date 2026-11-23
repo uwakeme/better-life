@@ -1,0 +1,6 @@
+.page { min-height: 100vh; padding-bottom: 40rpx; }
+.search-ic { width: 34rpx; height: 34rpx; }
+.ph { color: var(--ink-3); }
+.grow { flex: 1; }
+.tap { opacity: .78; }
+.filter-panel { margin: 0 32rpx; }

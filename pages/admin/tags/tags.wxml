@@ -1,0 +1,81 @@
+<view class="tk page">
+  <nav-bar title="标签管理" />
+
+  <state-view
+    wx:if="{{!allowed}}"
+    type="empty"
+    title="这一页只有管理员能进"
+    text="标签是这个库的内部结构，不对普通读者开放。"
+    action-text="回到便签墙"
+    bind:action="backHome"
+  />
+
+  <block wx:else>
+    <view class="filter-bar">
+      <text class="filter-now">标签唯一键是「领域 + 名称」</text>
+      <view class="grow"></view>
+      <button class="btn sm" bindtap="startAdd" hover-class="tap">新增标签</button>
+    </view>
+
+    <!-- 新增 -->
+    <view wx:if="{{adding}}" class="blk">
+      <view class="blk-h"><text class="blk-t">新增标签</text></view>
+      <view class="field" style="margin-top: 16rpx;">
+        <view class="field-l">所属领域</view>
+        <view class="fb-choices">
+          <text
+            wx:for="{{categories}}"
+            wx:key="id"
+            class="pick {{newCat === item.id ? 'on' : ''}}"
+            data-id="{{item.id}}"
+            bindtap="setNewCat"
+            hover-class="tap"
+          >{{item.name}}</text>
+        </view>
+      </view>
+      <view class="field">
+        <view class="field-l">标签名<text class="req">*</text></view>
+        <input class="input" placeholder="例如：洗护" value="{{newName}}" bindinput="onNewName" />
+      </view>
+      <view class="blk-ops">
+        <button class="btn sm pri" bindtap="saveAdd" hover-class="tap">保存</button>
+        <button class="btn sm" bindtap="cancelAdd" hover-class="tap">取消</button>
+      </view>
+    </view>
+
+    <view wx:if="{{hint}}" class="fb-hint" style="margin: 0 var(--pad-rpx) 8rpx;">{{hint}}</view>
+
+    <state-view wx:if="{{loading}}" type="loading" />
+    <state-view
+      wx:elif="{{error}}"
+      type="error"
+      title="网络不太顺畅，没连上"
+      text="{{error}}"
+      action-text="重新加载"
+      bind:action="retry"
+    />
+
+    <view wx:else class="tgroups">
+      <view wx:for="{{groups}}" wx:key="id" class="tgroup">
+        <view class="tgroup-h">
+          <text class="tgroup-n">{{item.name}}</text>
+          <text class="tgroup-c">{{item.tags.length}} 个</text>
+        </view>
+        <view wx:if="{{!item.tags.length}}" class="tgroup-empty">这个领域还没有标签。</view>
+        <view wx:for="{{item.tags}}" wx:for-item="tag" wx:key="id" class="trow">
+          <block wx:if="{{editingId === tag.id}}">
+            <input class="input trow-in" value="{{editName}}" bindinput="onEditName" focus="{{true}}" />
+            <button class="btn sm pri" bindtap="saveEdit" hover-class="tap">保存</button>
+            <button class="btn sm" bindtap="cancelEdit" hover-class="tap">取消</button>
+          </block>
+          <block wx:else>
+            <text class="trow-n">{{tag.name}}</text>
+            <view class="grow"></view>
+            <button class="btn sm" data-id="{{tag.id}}" data-name="{{tag.name}}" bindtap="startEdit" hover-class="tap">改名</button>
+            <button class="btn sm" data-id="{{tag.id}}" data-name="{{tag.name}}" bindtap="remove" hover-class="tap">删除</button>
+          </block>
+        </view>
+      </view>
+    </view>
+  </block>
+</view>

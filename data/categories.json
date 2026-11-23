@@ -1,0 +1,259 @@
+{
+  "categories": [
+    {
+      "id": 1,
+      "slug": "shopping",
+      "name": "买买买",
+      "icon": "bag",
+      "desc": "洗护、家电、数码、服饰、食品、母婴、清洁、宠物"
+    },
+    {
+      "id": 2,
+      "slug": "food",
+      "name": "吃喝",
+      "icon": "bowl",
+      "desc": "外食、做饭、饮品、食材储存、厨房"
+    },
+    {
+      "id": 3,
+      "slug": "home",
+      "name": "住家",
+      "icon": "house",
+      "desc": "清洁、收纳、装修、维修、家电养护"
+    },
+    {
+      "id": 4,
+      "slug": "travel",
+      "name": "出行",
+      "icon": "plane",
+      "desc": "通勤、机票火车、自驾、住宿、打包"
+    },
+    {
+      "id": 5,
+      "slug": "health",
+      "name": "健康",
+      "icon": "heart",
+      "desc": "睡眠、饮食、体检、用药常识、运动"
+    },
+    {
+      "id": 6,
+      "slug": "money",
+      "name": "钱财",
+      "icon": "wallet",
+      "desc": "记账、砍订阅、保险、理财常识、退款"
+    },
+    {
+      "id": 7,
+      "slug": "rights",
+      "name": "办事维权",
+      "icon": "shield",
+      "desc": "投诉、快递、合同、社保、网购纠纷"
+    },
+    {
+      "id": 8,
+      "slug": "mind",
+      "name": "人际心态",
+      "icon": "chat",
+      "desc": "沟通、边界、职场、情绪"
+    },
+    {
+      "id": 9,
+      "slug": "skill",
+      "name": "技能效率",
+      "icon": "tools",
+      "desc": "工具、自动化、笔记、方法"
+    }
+  ],
+  "tags": [
+    {
+      "id": 1,
+      "categoryId": 1,
+      "name": "洗护"
+    },
+    {
+      "id": 2,
+      "categoryId": 1,
+      "name": "成分"
+    },
+    {
+      "id": 3,
+      "categoryId": 1,
+      "name": "数码"
+    },
+    {
+      "id": 4,
+      "categoryId": 1,
+      "name": "母婴"
+    },
+    {
+      "id": 5,
+      "categoryId": 1,
+      "name": "清洁"
+    },
+    {
+      "id": 6,
+      "categoryId": 1,
+      "name": "家电"
+    },
+    {
+      "id": 7,
+      "categoryId": 2,
+      "name": "食材储存"
+    },
+    {
+      "id": 8,
+      "categoryId": 2,
+      "name": "外食"
+    },
+    {
+      "id": 9,
+      "categoryId": 2,
+      "name": "厨房"
+    },
+    {
+      "id": 10,
+      "categoryId": 3,
+      "name": "收纳"
+    },
+    {
+      "id": 11,
+      "categoryId": 3,
+      "name": "装修"
+    },
+    {
+      "id": 12,
+      "categoryId": 3,
+      "name": "家电养护"
+    },
+    {
+      "id": 13,
+      "categoryId": 4,
+      "name": "机票火车"
+    },
+    {
+      "id": 14,
+      "categoryId": 4,
+      "name": "通勤"
+    },
+    {
+      "id": 15,
+      "categoryId": 5,
+      "name": "睡眠"
+    },
+    {
+      "id": 16,
+      "categoryId": 5,
+      "name": "体检"
+    },
+    {
+      "id": 17,
+      "categoryId": 5,
+      "name": "用药常识"
+    },
+    {
+      "id": 18,
+      "categoryId": 6,
+      "name": "记账"
+    },
+    {
+      "id": 19,
+      "categoryId": 6,
+      "name": "砍订阅"
+    },
+    {
+      "id": 20,
+      "categoryId": 6,
+      "name": "保险"
+    },
+    {
+      "id": 21,
+      "categoryId": 7,
+      "name": "快递"
+    },
+    {
+      "id": 22,
+      "categoryId": 7,
+      "name": "合同"
+    },
+    {
+      "id": 23,
+      "categoryId": 7,
+      "name": "投诉"
+    },
+    {
+      "id": 24,
+      "categoryId": 8,
+      "name": "沟通"
+    },
+    {
+      "id": 25,
+      "categoryId": 8,
+      "name": "边界"
+    },
+    {
+      "id": 26,
+      "categoryId": 8,
+      "name": "情绪"
+    },
+    {
+      "id": 27,
+      "categoryId": 9,
+      "name": "工具"
+    },
+    {
+      "id": 28,
+      "categoryId": 9,
+      "name": "自动化"
+    },
+    {
+      "id": 29,
+      "categoryId": 9,
+      "name": "笔记方法"
+    },
+    {
+      "id": 30,
+      "categoryId": 3,
+      "name": "清洁"
+    },
+    {
+      "id": 31,
+      "categoryId": 2,
+      "name": "做饭"
+    },
+    {
+      "id": 32,
+      "categoryId": 3,
+      "name": "维修"
+    },
+    {
+      "id": 33,
+      "categoryId": 4,
+      "name": "自驾"
+    },
+    {
+      "id": 34,
+      "categoryId": 4,
+      "name": "住宿"
+    },
+    {
+      "id": 35,
+      "categoryId": 5,
+      "name": "运动"
+    },
+    {
+      "id": 36,
+      "categoryId": 5,
+      "name": "饮食常识"
+    },
+    {
+      "id": 37,
+      "categoryId": 6,
+      "name": "退款"
+    },
+    {
+      "id": 38,
+      "categoryId": 8,
+      "name": "职场"
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+<view class="tk page">
+  <nav-bar
+    title="经验详情"
+    show-back="{{true}}"
+    show-star="{{true}}"
+    show-share="{{true}}"
+    starred="{{starred}}"
+    bind:star="onStar"
+  />
+
+  <state-view wx:if="{{loading}}" type="loading" />
+  <state-view
+    wx:elif="{{error}}"
+    type="error"
+    title="网络不太顺畅，没连上"
+    text="{{error}}"
+    action-text="重新加载"
+    bind:action="retry"
+  />
+
+  <!-- 内容已下线：分享出去的链接可能指向一条被撤回的内容 -->
+  <state-view
+    wx:elif="{{offline}}"
+    type="empty"
+    title="这条经验已下线"
+    text="内容可能已被更新或撤回，请回到便签墙看看其他经验。"
+    action-text="回到便签墙"
+    bind:action="goHome"
+  />
+
+  <block wx:else>
+    <!-- 争议提示 -->
+    <view wx:if="{{disputed}}" class="notice warn">
+      这条经验存在争议：有读者反馈它在部分情况下并不适用。请结合自己的情况判断，必要时以官方口径为准。
+    </view>
+
+    <!-- 领域免责条 -->
+    <view wx:if="{{disclaimer}}" class="disclaimer">{{disclaimer}}</view>
+
+    <!-- 结论 -->
+    <view class="detail-head">
+      <text wx:if="{{experience.categoryName}}" class="detail-cat">{{experience.categoryName}}</text>
+      <view class="detail-t">{{experience.title}}</view>
+      <view class="detail-s">{{experience.summary}}</view>
+      <view wx:if="{{experience.body}}" class="detail-b">{{experience.body}}</view>
+      <view class="detail-m">
+        <text>{{updatedLine}}</text>
+        <text wx:if="{{tagLine}}" class="detail-tags">{{tagLine}}</text>
+      </view>
+    </view>
+
+    <!-- 要点：默认折叠，展开后就地给出依据 -->
+    <view class="sec-h">
+      <view class="sec-h-t">要点<text class="hand"> · 共 {{points.length}} 条</text></view>
+      <view class="sec-h-s">点开看依据</view>
+    </view>
+    <view class="points">
+      <point-item wx:for="{{points}}" wx:key="id" point="{{item}}" />
+    </view>
+
+    <!-- 依据全文只在详情页出现一次，这里只给一个入口 -->
+    <view wx:if="{{sourceCount}}" class="notes-link" bindtap="goSource" hover-class="tap">
+      <text class="notes-link-t">查看全部 {{sourceCount}} 条依据</text>
+      <text class="notes-link-x">›</text>
+    </view>
+
+    <!-- 相关经验 -->
+    <view wx:if="{{related.length}}" class="sec-h">
+      <view class="sec-h-t">相关经验</view>
+      <view class="sec-h-s">同领域优先</view>
+    </view>
+    <view wx:if="{{related.length}}" class="list">
+      <experience-card wx:for="{{related}}" wx:key="id" card="{{item}}" bind:open="openRelated" />
+    </view>
+
+    <view class="page-end">以上内容由本库维护者整理，依据链接可自行核对。</view>
+  </block>
+
+  <!-- 吸底操作条 -->
+  <view wx:if="{{!loading && !error && !offline}}" class="actionbar">
+    <view class="vote">
+      <view class="vote-btn {{voted === 'up' ? 'on' : ''}}" data-v="up" bindtap="onVote" hover-class="tap">
+        <image class="vote-img" src="/assets/icons/thumbsup.png" />
+        <text>有用</text>
+        <text class="vote-n">{{usefulCount}}</text>
+      </view>
+      <view class="vote-btn {{voted === 'down' ? 'on' : ''}}" data-v="down" bindtap="onVote" hover-class="tap">
+        <image class="vote-img" src="/assets/icons/thumbdown.png" />
+        <text>没用</text>
+        <text class="vote-n">{{notUsefulCount}}</text>
+      </view>
+    </view>
+    <view class="grow"></view>
+    <button wx:if="{{!isAdmin}}" class="btn pri sm" bindtap="goFeedback" hover-class="tap">反馈</button>
+  </view>
+</view>

@@ -1,0 +1,125 @@
+<view class="tk page">
+  <nav-bar title="反馈盒" />
+
+  <state-view
+    wx:if="{{!allowed}}"
+    type="empty"
+    title="这一页只有管理员能进"
+    text="反馈只进管理员后台，不对外公开。"
+    action-text="回到便签墙"
+    bind:action="backHome"
+  />
+
+  <block wx:else>
+    <view class="chips">
+      <text
+        wx:for="{{filters}}"
+        wx:key="key"
+        class="pick {{filter === item.key ? 'on' : ''}}"
+        data-k="{{item.key}}"
+        bindtap="setFilter"
+        hover-class="tap"
+      >{{item.name}}</text>
+    </view>
+
+    <state-view wx:if="{{loading}}" type="loading" />
+    <state-view
+      wx:elif="{{error}}"
+      type="error"
+      title="网络不太顺畅，没连上"
+      text="{{error}}"
+      action-text="重新加载"
+      bind:action="retry"
+    />
+    <state-view
+      wx:elif="{{!items.length}}"
+      type="empty"
+      title="这个筛选下没有反馈"
+      text="换一个筛选看看，或者等读者提了新的问题。"
+    />
+
+    <view wx:else class="box">
+      <view wx:for="{{items}}" wx:key="id" class="fbcard">
+        <view class="fbcard-h">
+          <text class="fbcard-k">{{item.kindLabel}}</text>
+          <text class="fbcard-s st-{{item.status}}">{{item.statusLabel}}</text>
+          <text class="grow"></text>
+          <text class="fbcard-d">{{item.createdAt}}</text>
+        </view>
+        <view class="fbcard-c">{{item.content}}</view>
+        <view class="fbcard-m">
+          <text>来自 {{item.author}}</text>
+          <text wx:if="{{item.targetType === 'experience'}}" class="fbcard-link" data-id="{{item.targetId}}" bindtap="openExp" hover-class="tap">
+            看这条经验
+          </text>
+        </view>
+
+        <!-- 管理侧要看得见图，审核状态标出来 -->
+        <view wx:if="{{item.images.length}}" class="fb-imgs">
+          <view wx:for="{{item.images}}" wx:for-item="im" wx:key="url" class="fb-img {{item.mediaStatus}}">
+            <image class="fb-img-pic" src="{{im.url}}" mode="aspectFill" />
+            <text wx:if="{{item.mediaStatus !== 'none'}}" class="fb-img-tag">{{item.mediaLabel}}</text>
+          </view>
+        </view>
+
+        <view wx:if="{{item.reply}}" class="fbcard-r">
+          <text class="fbcard-rl">已回复</text>
+          <text class="fbcard-rv">{{item.reply}}</text>
+        </view>
+
+        <view class="fbcard-ops">
+          <button
+            class="btn sm {{activeId === item.id ? 'on' : ''}}"
+            data-id="{{item.id}}"
+            bindtap="openPanel"
+            hover-class="tap"
+          >{{activeId === item.id ? '收起' : '处理这条'}}</button>
+        </view>
+
+        <!-- 处理面板：结论 + 回复，一次提交 -->
+        <view wx:if="{{activeId === item.id}}" class="fb-panel">
+          <view class="fb-legend">怎么处理这条</view>
+          <view class="fb-choices">
+            <view
+              wx:for="{{choices}}"
+              wx:key="key"
+              class="pick {{pick === item.key ? 'on' : ''}}"
+              data-k="{{item.key}}"
+              bindtap="setPick"
+              hover-class="tap"
+            >{{item.name}}</view>
+          </view>
+          <view class="fb-choices" style="margin-top: 10rpx;">
+            <text
+              wx:for="{{choices}}"
+              wx:key="key"
+              class="fb-tip"
+              wx:if="{{pick === item.key}}"
+            >{{item.desc}}</text>
+          </view>
+
+          <view class="fb-legend">回复（选「只回话」时必填）</view>
+          <textarea
+            class="fb-input"
+            placeholder="写给读者的回复"
+            value="{{reply}}"
+            bindinput="onReply"
+            maxlength="-1"
+          />
+          <view wx:if="{{hint}}" class="fb-hint">{{hint}}</view>
+          <view class="fb-tip">采纳与不采纳不必写理由；理由属于可选补充。</view>
+
+          <view class="blk-ops">
+            <button
+              class="btn pri sm"
+              data-id="{{item.id}}"
+              bindtap="submit"
+              hover-class="tap"
+              disabled="{{submitting}}"
+            >{{submitting ? '提交中' : '提交处理结果'}}</button>
+          </view>
+        </view>
+      </view>
+    </view>
+  </block>
+</view>

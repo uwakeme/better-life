@@ -1,0 +1,43 @@
+<view class="tk page">
+  <nav-bar title="收藏夹" />
+
+  <view class="filter-bar">
+    <text class="filter-now">共 {{total}} 条</text>
+    <view class="grow"></view>
+    <text class="pill {{sort === 'added' ? 'on' : ''}}" data-k="added" bindtap="setSort" hover-class="tap">最近收藏</text>
+    <text class="pill {{sort === 'updated' ? 'on' : ''}}" data-k="updated" bindtap="setSort" hover-class="tap">最近更新</text>
+  </view>
+
+  <view wx:if="{{categories.length}}" class="chips">
+    <text class="pick {{catId === 0 ? 'on' : ''}}" data-id="0" bindtap="setCat" hover-class="tap">全部领域</text>
+    <text
+      wx:for="{{categories}}"
+      wx:key="id"
+      class="pick {{catId === item.id ? 'on' : ''}}"
+      data-id="{{item.id}}"
+      bindtap="setCat"
+      hover-class="tap"
+    >{{item.name}}</text>
+  </view>
+
+  <state-view wx:if="{{loading}}" type="loading" />
+  <state-view
+    wx:elif="{{error}}"
+    type="error"
+    title="网络不太顺畅，没连上"
+    text="{{error}}"
+    action-text="重新加载"
+    bind:action="retry"
+  />
+  <state-view
+    wx:elif="{{empty}}"
+    type="empty"
+    title="收藏夹还是空的"
+    text="在经验详情页点右上角的星标，条目就会存在这里。"
+    action-text="去搜索"
+    bind:action="goSearch"
+  />
+  <view wx:else class="list">
+    <experience-card wx:for="{{cards}}" wx:key="id" card="{{item}}" bind:open="openExp" />
+  </view>
+</view>

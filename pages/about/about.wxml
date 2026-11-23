@@ -1,0 +1,33 @@
+<view class="tk page">
+  <nav-bar title="关于与隐私" />
+
+  <view class="sec-h">
+    <view class="sec-h-t">关于本库</view>
+  </view>
+  <view class="notes">
+    <view class="strip">
+      <view class="strip-t">这是什么</view>
+      <view class="strip-n">一个生活经验库：一条经验 = 一个结论 + 几条可判定立场的要点 + 挂在要点上的依据来源。每条判断都能点开看它来自哪里。</view>
+    </view>
+    <view class="strip">
+      <view class="strip-t">内容从哪来</view>
+      <view class="strip-n">内容逐条录入，每条均标注来源，只存标题、链接与引用理由，不转载原文。</view>
+    </view>
+    <view class="strip">
+      <view class="strip-t">会不会过时</view>
+      <view class="strip-n">会。页面上的日期是这条内容最近一次修改的时间，内容可能随时间变化，请结合当时的实际情况判断。</view>
+    </view>
+    <view class="strip">
+      <view class="strip-t">数据怎么用</view>
+      <view class="strip-n">本小程序会记录你的微信标识，用于登录与收藏，不会用于其他用途。收藏与搜索记录只保存在这台设备上，不上传、不参与任何统计。</view>
+    </view>
+    <view class="strip">
+      <view class="strip-t">身体不适怎么办</view>
+      <view class="strip-n">身体不适请及时就医，请勿仅依据本库自行判断。</view>
+    </view>
+  </view>
+
+  <view class="actions">
+    <button class="btn pri" bindtap="openPrivacy" hover-class="tap">查看隐私保护指引</button>
+  </view>
+</view>

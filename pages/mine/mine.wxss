@@ -1,0 +1,15 @@
+.page { min-height: 100vh; padding-bottom: 60rpx; }
+
+.devpanel {
+  margin: 40rpx var(--pad-rpx) 0;
+  background: var(--card);
+  border-radius: var(--r-blk-rpx);
+  padding: 26rpx 28rpx;
+  box-shadow: var(--sh-sm-rpx) var(--shadow-sm);
+}
+.devpanel-t { font-size: 27rpx; font-weight: 900; color: var(--ink); }
+.devpanel-s { margin-top: 8rpx; font-size: 24rpx; color: var(--ink-3); line-height: 1.7; }
+.devrow { margin-top: 24rpx; }
+.devrow-l { font-size: 25rpx; color: var(--ink-2); }
+.devrow-o { margin-top: 10rpx; display: flex; flex-wrap: wrap; gap: 14rpx; }
+.devrow-wrap { gap: 12rpx; }

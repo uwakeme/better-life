@@ -1,0 +1,128 @@
+<view class="tk page">
+  <nav-bar title="找经验" show-back="{{false}}" />
+
+  <view class="searchbar">
+    <view class="searchbar-ic">
+      <image class="search-ic" src="/assets/icons/search.png" />
+    </view>
+    <input
+      class="searchbar-in"
+      value="{{input}}"
+      placeholder="搜一条用得上的经验"
+      placeholder-class="ph"
+      confirm-type="search"
+      bindinput="onInput"
+      bindfocus="onFocus"
+      bindconfirm="doSearch"
+    />
+    <text wx:if="{{input}}" class="searchbar-x" bindtap="clearInput">✕</text>
+  </view>
+
+  <!-- 降级提示：mode 不为 hybrid 就如实说明（§7.7） -->
+  <view wx:if="{{searched && !loading && mode === 'keyword'}}" class="notice warn">
+    语义检索未启用，当前为关键词匹配。
+  </view>
+  <view wx:if="{{searched && !loading && mode === 'vector'}}" class="notice">
+    关键词路没命中，下面这些是语义匹配的结果。
+  </view>
+  <view wx:if="{{searched && !loading && mode === 'degraded'}}" class="notice">
+    当前为演示数据，检索结果是写死的样例。
+  </view>
+
+  <!-- 联想面板：标明候选词来自哪里 -->
+  <view wx:if="{{suggest.length}}" class="suggest">
+    <view class="suggest-t">
+      <text>候选词</text>
+      <text class="suggest-s">来自本机历史与已收录内容</text>
+    </view>
+    <view
+      wx:for="{{suggest}}"
+      wx:key="text"
+      class="suggest-i"
+      data-text="{{item.text}}"
+      bindtap="pickSuggest"
+      hover-class="tap"
+    >
+      <image class="chip-img" src="/assets/icons/search.png" />
+      <text>{{item.text}}</text>
+    </view>
+  </view>
+
+  <!-- 默认态：本机历史 + 最近收录 -->
+  <block wx:if="{{!searched}}">
+    <view wx:if="{{hist.length}}" class="sec-h">
+      <view class="sec-h-t">搜索历史</view>
+      <view class="sec-h-s" bindtap="clearHist" hover-class="tap">清空</view>
+    </view>
+    <view wx:if="{{hist.length}}" class="chips">
+      <text
+        wx:for="{{hist}}"
+        wx:key="*this"
+        class="chip tap"
+        data-text="{{item}}"
+        bindtap="pickHist"
+      >{{item}}</text>
+    </view>
+    <view wx:if="{{recent.length}}" class="sec-h">
+      <view class="sec-h-t">最近收录</view>
+    </view>
+    <view wx:if="{{recent.length}}" class="list">
+      <experience-card wx:for="{{recent}}" wx:key="id" card="{{item}}" bind:open="openExp" />
+    </view>
+  </block>
+
+  <!-- 结果态 -->
+  <block wx:else>
+    <view class="filter-bar">
+      <text class="filter-now" bindtap="toggleFilters" hover-class="tap">
+        {{catId ? '已按领域筛选' : (stance ? '已按立场筛选' : '筛选：领域 / 立场')}}
+      </text>
+      <view class="grow"></view>
+      <text wx:if="{{catId || stance}}" class="chip tap" bindtap="clearFilters">清空筛选</text>
+    </view>
+
+    <view wx:if="{{showFilters}}" class="filter-panel">
+      <tag-pills
+        items="{{categories}}"
+        value="{{catId}}"
+        label="按领域筛选"
+        bind:change="onCat"
+      />
+      <tag-pills
+        items="{{[{ id: 1, name: '含推荐' }, { id: 2, name: '含避雷' }, { id: 3, name: '含中立' }]}}"
+        value="{{stance === 'good' ? 1 : (stance === 'bad' ? 2 : (stance === 'neutral' ? 3 : 0))}}"
+        label="按立场筛选"
+        bind:change="onStance"
+      />
+    </view>
+
+    <state-view wx:if="{{loading}}" type="loading" />
+    <state-view
+      wx:elif="{{timeout}}"
+      type="error"
+      title="检索超时了"
+      text="这次没搜完，可以重新检索或先清空输入。"
+      action-text="重新检索"
+      bind:action="retry"
+    />
+    <state-view
+      wx:elif="{{error}}"
+      type="error"
+      title="检索没成功"
+      text="{{error}}"
+      action-text="重新检索"
+      bind:action="retry"
+    />
+    <state-view
+      wx:elif="{{!cards.length}}"
+      type="empty"
+      title="没找到相关的经验"
+      text="换个说法再搜一次，或者去掉筛选条件看看。"
+      action-text="回首页"
+      bind:action="goHome"
+    />
+    <view wx:else class="list">
+      <experience-card wx:for="{{cards}}" wx:key="id" card="{{item}}" bind:open="openExp" />
+    </view>
+  </block>
+</view>

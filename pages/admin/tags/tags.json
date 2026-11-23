@@ -1,0 +1,7 @@
+{
+  "usingComponents": {
+    "nav-bar": "/components/nav-bar/nav-bar",
+    "state-view": "/components/state-view/state-view"
+  },
+  "navigationBarTitleText": "标签管理"
+}

@@ -1,0 +1,39 @@
+<view class="tk page">
+  <nav-bar title="{{categoryName || '领域'}}" />
+
+  <view class="sec-h">
+    <view class="sec-h-t">{{categoryName}}</view>
+    <view wx:if="{{categoryDesc}}" class="sec-h-s">{{categoryDesc}}</view>
+  </view>
+
+  <tag-pills wx:if="{{tags.length}}" items="{{tags}}" value="{{tagId}}" label="按二级标签筛选" bind:change="onTag" />
+
+  <view wx:if="{{source === 'demo' && !loading}}" class="notice">
+    当前为演示数据，检索结果是写死的样例。
+  </view>
+
+  <view class="filter-bar">
+    <text class="filter-now">共 {{total}} 条经验</text>
+  </view>
+
+  <state-view wx:if="{{loading}}" type="loading" />
+  <state-view
+    wx:elif="{{error}}"
+    type="error"
+    title="网络不太顺畅，没连上"
+    text="{{error}}"
+    action-text="重新加载"
+    bind:action="retry"
+  />
+  <state-view
+    wx:elif="{{!cards.length}}"
+    type="empty"
+    title="这个领域还没有内容"
+    text="换个标签看看，或者去搜索找找别的。"
+    action-text="去搜索"
+    bind:action="goSearch"
+  />
+  <view wx:else class="list">
+    <experience-card wx:for="{{cards}}" wx:key="id" card="{{item}}" bind:open="openExp" />
+  </view>
+</view>

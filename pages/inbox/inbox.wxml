@@ -1,0 +1,59 @@
+<view class="tk page">
+  <nav-bar title="我的反馈" />
+
+  <block wx:if="{{isAdmin}}">
+    <view class="notice">
+      管理员不提交反馈：这个库的每条经验都由管理员自己维护，发现问题直接改就行。
+      读者提的问题在「反馈盒」里处理。
+    </view>
+    <view class="actions">
+      <button class="btn pri" bindtap="goAdminFeedback" hover-class="tap">去反馈盒</button>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="fb-banner">
+      <view class="fb-banner-t">反馈只有你和这个库的维护者看得到</view>
+      <view class="fb-banner-c">提交之后可以在这里看到处理到哪一步。</view>
+      <view class="fb-next">
+        <button class="btn sm" bindtap="goNewFeedback" hover-class="tap">再写一条</button>
+      </view>
+    </view>
+
+    <state-view wx:if="{{loading}}" type="loading" />
+    <state-view
+      wx:elif="{{error}}"
+      type="error"
+      title="网络不太顺畅，没连上"
+      text="{{error}}"
+      action-text="重新加载"
+      bind:action="retry"
+    />
+    <state-view
+      wx:elif="{{empty}}"
+      type="empty"
+      title="还没有提交过反馈"
+      text="发现内容有问题、缺了什么或者有疑问，都可以写一条反馈。"
+      action-text="写一条"
+      bind:action="goNewFeedback"
+    />
+    <view wx:else class="inbox">
+      <view wx:for="{{items}}" wx:key="id" class="fbitem">
+        <view class="fbitem-h">
+          <text class="fbitem-k">{{item.kindLabel}}</text>
+          <text class="fbitem-s st-{{item.status}}">{{item.statusLabel}}</text>
+          <text class="grow"></text>
+          <text class="fbitem-d">{{item.createdAt}}</text>
+        </view>
+        <view class="fbitem-c">{{item.content}}</view>
+        <view wx:if="{{item.mediaStatus !== 'none'}}" class="fbitem-m">
+          图片{{item.mediaLabel}}
+        </view>
+        <view wx:if="{{item.reply}}" class="fbitem-r">
+          <text class="fbitem-rl">维护者的回复</text>
+          <text class="fbitem-rv">{{item.reply}}</text>
+        </view>
+      </view>
+    </view>
+  </block>
+</view>

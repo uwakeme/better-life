@@ -1,0 +1,26 @@
+.page { min-height: 100vh; padding-bottom: 60rpx; }
+.searchbar-admin { margin: 24rpx var(--pad-rpx) 8rpx; display: flex; align-items: center; gap: 16rpx; }
+.searchbar-admin .searchbar-in { flex: 1; min-width: 0; }
+.searchbar-admin .searchbar-x { font-size: 26rpx; color: var(--link-ink); padding: 0 8rpx; }
+
+.alist { padding: 8rpx var(--pad-rpx) 40rpx; }
+.aitem {
+  background: var(--card);
+  border-radius: var(--r-blk-rpx);
+  padding: 24rpx 26rpx;
+  margin-bottom: 20rpx;
+  box-shadow: var(--sh-sm-rpx) var(--shadow-sm);
+}
+.aitem-h { display: flex; align-items: flex-start; gap: 16rpx; }
+.aitem-t { flex: 1; font-size: 29rpx; font-weight: 800; color: var(--ink); line-height: 1.5; }
+.aitem-st {
+  flex: none;
+  font-size: 23rpx;
+  color: var(--ink-3);
+  background: var(--paper-2);
+  border-radius: 999rpx;
+  padding: 4rpx 16rpx;
+}
+.aitem-st.st-published { color: var(--good-ink); background: rgba(185, 227, 196, .5); }
+.aitem-m { margin-top: 14rpx; display: flex; flex-wrap: wrap; }
+.aitem-ops { margin-top: 18rpx; display: flex; flex-wrap: wrap; gap: 14rpx; }

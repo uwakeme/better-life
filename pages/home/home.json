@@ -1,0 +1,8 @@
+{
+  "usingComponents": {
+    "nav-bar": "/components/nav-bar/nav-bar",
+    "experience-card": "/components/experience-card/experience-card",
+    "state-view": "/components/state-view/state-view"
+  },
+  "navigationBarTitleText": "生活经验库"
+}

@@ -1,0 +1,125 @@
+<view class="tk page">
+  <nav-bar title="管理" />
+
+  <!-- 非管理员：只说明，不给任何操作 -->
+  <state-view
+    wx:if="{{!allowed}}"
+    type="empty"
+    title="这一页只有管理员能进"
+    text="这个库的每条经验都由管理员自己维护，所以管理入口不对普通读者开放。"
+    action-text="回到便签墙"
+    bind:action="backHome"
+  />
+
+  <block wx:else>
+    <!-- 指标 -->
+    <view wx:if="{{stats}}" class="metrics">
+      <view class="metric">
+        <view class="metric-n">{{stats.published}}</view>
+        <view class="metric-l">已发布</view>
+      </view>
+      <view class="metric">
+        <view class="metric-n">{{stats.drafts}}</view>
+        <view class="metric-l">草稿</view>
+      </view>
+      <view class="metric">
+        <view class="metric-n">{{stats.pendingFeedback}}</view>
+        <view class="metric-l">待处理反馈</view>
+      </view>
+      <view class="metric">
+        <view class="metric-n">{{stats.sources}}</view>
+        <view class="metric-l">依据总数</view>
+      </view>
+    </view>
+
+    <!-- 管理入口 -->
+    <view class="entry-list">
+      <view class="entry entry-pri" bindtap="goInbox" hover-class="tap">
+        <text class="entry-n">反馈盒</text>
+        <text class="entry-c">{{stats.pendingFeedback}} 条待处理</text>
+      </view>
+      <view class="entry" bindtap="goTags" hover-class="tap">
+        <text class="entry-n">标签管理</text>
+        <text class="entry-c">{{stats.tags}} 个标签</text>
+      </view>
+    </view>
+
+    <!-- 搜索在应用层做（§14 D11） -->
+    <view class="searchbar-admin">
+      <view class="searchbar-ic">
+        <image class="chip-img" src="/assets/icons/search.png" />
+      </view>
+      <input class="searchbar-in" placeholder="搜标题、结论或标签" value="{{q}}" bindinput="onQ" bindconfirm="search" confirm-type="search" />
+      <text wx:if="{{q}}" class="searchbar-x" bindtap="search">搜</text>
+    </view>
+
+    <view wx:if="{{categories.length}}" class="chips">
+      <text class="pick {{cat === 0 ? 'on' : ''}}" data-id="0" bindtap="setCat" hover-class="tap">全部领域</text>
+      <text
+        wx:for="{{categories}}"
+        wx:key="id"
+        class="pick {{cat === item.id ? 'on' : ''}}"
+        data-id="{{item.id}}"
+        bindtap="setCat"
+        hover-class="tap"
+      >{{item.name}}</text>
+    </view>
+
+    <view class="filter-bar">
+      <text class="filter-now">共 {{items.length}} 条</text>
+      <view class="grow"></view>
+      <button class="btn sm" bindtap="newExp" hover-class="tap">新建经验</button>
+    </view>
+
+    <state-view wx:if="{{loading}}" type="loading" />
+    <state-view
+      wx:elif="{{error}}"
+      type="error"
+      title="网络不太顺畅，没连上"
+      text="{{error}}"
+      action-text="重新加载"
+      bind:action="retry"
+    />
+    <state-view
+      wx:elif="{{!items.length}}"
+      type="empty"
+      title="没有匹配的内容"
+      text="换个关键词或领域试试，也可以直接新建一条经验。"
+      action-text="新建经验"
+      bind:action="newExp"
+    />
+    <view wx:else class="alist">
+      <view wx:for="{{items}}" wx:key="id" class="aitem">
+        <view class="aitem-h">
+          <text class="aitem-t">{{item.title}}</text>
+          <text class="aitem-st st-{{item.status}}">{{item.statusLabel}}</text>
+        </view>
+        <view class="aitem-m">
+          <text wx:if="{{item.categoryName}}" class="chip">{{item.categoryName}}</text>
+          <text class="chip">{{item.pointCount}} 要点</text>
+          <text class="chip">{{item.sourceCount}} 依据</text>
+          <text wx:if="{{item.updatedAt}}" class="chip">更新 {{item.updatedAt}}</text>
+        </view>
+        <view class="aitem-ops">
+          <button class="btn sm" data-id="{{item.id}}" bindtap="edit" hover-class="tap">编辑</button>
+          <button
+            wx:if="{{item.status !== 'published'}}"
+            class="btn sm"
+            data-id="{{item.id}}"
+            data-act="publish"
+            bindtap="togglePublish"
+            hover-class="tap"
+          >发布</button>
+          <button
+            wx:else
+            class="btn sm"
+            data-id="{{item.id}}"
+            data-act="unpublish"
+            bindtap="togglePublish"
+            hover-class="tap"
+          >下线</button>
+        </view>
+      </view>
+    </view>
+  </block>
+</view>

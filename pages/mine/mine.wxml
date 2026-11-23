@@ -1,0 +1,78 @@
+<view class="tk page">
+  <nav-bar title="我的" show-back="{{false}}" />
+
+  <view class="me">
+    <view class="me-av">我</view>
+    <view class="grow">
+      <view class="me-n">我</view>
+      <view wx:if="{{isAdmin}}" class="me-s">管理员 · 这个库由我维护</view>
+    </view>
+  </view>
+
+  <state-view wx:if="{{error}}" type="error" title="网络不太顺畅，没连上" text="{{error}}" />
+  <view wx:else class="metrics">
+    <view class="metric">
+      <view class="metric-n">{{favorites}}</view>
+      <view class="metric-l">收藏</view>
+    </view>
+    <view wx:if="{{!isAdmin}}" class="metric">
+      <view class="metric-n">{{myFeedbacks}}</view>
+      <view class="metric-l">我的反馈</view>
+    </view>
+    <view class="metric">
+      <view class="metric-n">{{total}}</view>
+      <view class="metric-l">库内经验</view>
+    </view>
+  </view>
+
+  <view class="entry-list">
+    <view class="entry" bindtap="goFavorites" hover-class="tap">
+      <text class="entry-n">收藏夹</text>
+      <text class="entry-c">{{favorites}} 条</text>
+    </view>
+
+    <!-- 管理员不提交反馈，这条入口只给普通用户 -->
+    <view wx:if="{{!isAdmin}}" class="entry" bindtap="goInbox" hover-class="tap">
+      <text class="entry-n">我的反馈</text>
+      <text class="entry-c">{{myFeedbacks}} 条</text>
+    </view>
+
+    <view wx:if="{{isAdmin}}" class="entry entry-pri" bindtap="goAdmin" hover-class="tap">
+      <text class="entry-n">管理</text>
+      <text class="entry-c">经验 · 反馈 · 标签</text>
+    </view>
+
+    <view class="entry" bindtap="goAbout" hover-class="tap">
+      <text class="entry-n">关于与隐私</text>
+      <text class="entry-c">›</text>
+    </view>
+  </view>
+
+  <!-- 开发模式面板：正式包不渲染（config.devPanel = false） -->
+  <view wx:if="{{devPanel}}" class="devpanel">
+    <view class="devpanel-t">开发模式</view>
+    <view class="devpanel-s">仅用于自测，正式包不包含这一块。</view>
+
+    <view class="devrow">
+      <text class="devrow-l">当前身份</text>
+      <view class="devrow-o">
+        <text class="pick {{!isAdmin ? 'on' : ''}}" data-role="user" bindtap="switchRole" hover-class="tap">普通用户</text>
+        <text class="pick {{isAdmin ? 'on' : ''}}" data-role="admin" bindtap="switchRole" hover-class="tap">管理员</text>
+      </view>
+    </view>
+
+    <view class="devrow">
+      <text class="devrow-l">演示场景</text>
+      <view class="devrow-o devrow-wrap">
+        <text
+          wx:for="{{scenes}}"
+          wx:key="key"
+          class="pick {{scene === item.key ? 'on' : ''}}"
+          data-scene="{{item.key}}"
+          bindtap="switchScene"
+          hover-class="tap"
+        >{{item.label}}</text>
+      </view>
+    </view>
+  </view>
+</view>

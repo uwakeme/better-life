@@ -1,0 +1,24 @@
+.page { min-height: 100vh; padding-bottom: 60rpx; }
+
+.tgroups { padding: 8rpx var(--pad-rpx) 40rpx; }
+.tgroup {
+  background: var(--card);
+  border-radius: var(--r-blk-rpx);
+  padding: 24rpx 26rpx;
+  margin-bottom: 20rpx;
+  box-shadow: var(--sh-sm-rpx) var(--shadow-sm);
+}
+.tgroup-h { display: flex; align-items: baseline; gap: 14rpx; margin-bottom: 12rpx; }
+.tgroup-n { font-size: 29rpx; font-weight: 800; color: var(--ink); }
+.tgroup-c { font-size: 24rpx; color: var(--ink-3); }
+.tgroup-empty { font-size: 25rpx; color: var(--ink-3); padding: 8rpx 0; }
+.trow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14rpx;
+  padding: 14rpx 0;
+  border-top: 1rpx solid var(--shadow-xs);
+}
+.trow-n { font-size: 27rpx; color: var(--ink); }
+.trow-in { flex: 1; min-width: 0; }

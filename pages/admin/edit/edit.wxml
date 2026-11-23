@@ -1,0 +1,204 @@
+<view class="tk page">
+  <nav-bar title="{{isNew ? '新建经验' : '编辑经验'}}" />
+
+  <state-view
+    wx:if="{{!allowed}}"
+    type="empty"
+    title="这一页只有管理员能进"
+    text="经验由管理员自己录入与维护。"
+    action-text="回到便签墙"
+    bind:action="backHome"
+  />
+
+  <block wx:else>
+    <view wx:if="{{errors.length}}" class="notice warn">
+      <view wx:for="{{errors}}" wx:key="*this" class="notice-line">· {{item}}</view>
+    </view>
+    <view wx:if="{{hint}}" class="notice warn">{{hint}}</view>
+
+    <view class="form">
+      <!-- 结论 -->
+      <view class="blk">
+        <view class="blk-h"><text class="blk-t">结论</text></view>
+        <view class="field" style="margin-top: 16rpx;">
+          <view class="field-l">标题<text class="req">*</text></view>
+          <input class="input big" placeholder="一句话说清这条经验是什么" value="{{title}}" bindinput="onTitle" />
+        </view>
+        <view class="field">
+          <view class="field-l">结论<text class="req">*</text></view>
+          <textarea class="textarea" placeholder="读者最先看到的一段话" value="{{summary}}" bindinput="onSummary" maxlength="-1" />
+        </view>
+        <view class="field">
+          <view class="field-l">正文（可空）</view>
+          <textarea class="textarea" placeholder="展开讲一讲" value="{{body}}" bindinput="onBody" maxlength="-1" />
+        </view>
+      </view>
+
+      <!-- 归类 -->
+      <view class="blk">
+        <view class="blk-h"><text class="blk-t">归类</text></view>
+        <view class="field" style="margin-top: 16rpx;">
+          <view class="field-l">所属领域</view>
+          <view class="fb-choices">
+            <text
+              wx:for="{{categories}}"
+              wx:key="id"
+              class="pick {{categoryId === item.id ? 'on' : ''}}"
+              data-id="{{item.id}}"
+              bindtap="setCategory"
+              hover-class="tap"
+            >{{item.name}}</text>
+          </view>
+        </view>
+        <view class="field">
+          <view class="field-l">搜索关键词（可空，用顿号隔开）</view>
+          <input class="input" placeholder="例如：洗头水、洗发露" value="{{keywordText}}" bindinput="onKeywords" />
+          <view class="fb-tip">关键词只用于检索召回，读者侧看不到。</view>
+        </view>
+        <view class="field">
+          <view class="field-l">二级标签</view>
+          <view class="fb-choices">
+            <text
+              wx:for="{{tagView}}"
+              wx:key="id"
+              class="pick {{item.on ? 'on' : ''}}"
+              data-id="{{item.id}}"
+              bindtap="toggleTag"
+              hover-class="tap"
+            >{{item.name}}</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 要点 -->
+      <view class="blk">
+        <view class="blk-h">
+          <text class="blk-t">要点</text>
+          <view class="grow"></view>
+          <text class="blk-n">{{points.length}} 条</text>
+        </view>
+        <view class="blk-b">每条要点有自己的立场、理由和适用条件。</view>
+
+        <view wx:for="{{points}}" wx:key="id" wx:for-index="pi" class="edit-row edit-blk">
+          <view class="edit-row-head">
+            <text class="blk-n">要点 {{pi + 1}}</text>
+            <view class="grow"></view>
+            <button class="btn sm" data-i="{{pi}}" bindtap="removePoint" hover-class="tap">删除</button>
+          </view>
+          <view class="field">
+            <view class="field-l">立场</view>
+            <view class="fb-choices">
+              <text
+                wx:for="{{stances}}"
+                wx:for-item="st"
+                wx:key="key"
+                class="pick {{item.stance === st.key ? 'on' : ''}}"
+                data-i="{{pi}}"
+                data-k="{{st.key}}"
+                bindtap="setPointStance"
+                hover-class="tap"
+              >{{st.name}}</text>
+            </view>
+          </view>
+          <view class="field">
+            <view class="field-l">要点标题</view>
+            <input class="input" data-i="{{pi}}" bindinput="onPointTitle" value="{{item.title}}" placeholder="一句话说清这条要点" />
+          </view>
+          <view class="field">
+            <view class="field-l">为什么（理由）</view>
+            <textarea class="textarea" data-i="{{pi}}" bindinput="onPointDetail" value="{{item.detail}}" maxlength="-1" />
+          </view>
+          <view class="field">
+            <view class="field-l">适用条件</view>
+            <input class="input" data-i="{{pi}}" bindinput="onPointApplies" value="{{item.appliesTo}}" placeholder="在什么情况下成立" />
+          </view>
+        </view>
+
+        <view class="blk-ops">
+          <button class="btn sm" bindtap="addPoint" hover-class="tap">加一条要点</button>
+        </view>
+      </view>
+
+      <!-- 依据 -->
+      <view class="blk">
+        <view class="blk-h">
+          <text class="blk-t">依据</text>
+          <view class="grow"></view>
+          <text class="blk-n">{{sources.length}} 条</text>
+        </view>
+        <view class="blk-b">每条依据都要挂到要点上 —— 不挂要点的依据等于没有出处。</view>
+
+        <view wx:for="{{sources}}" wx:key="id" wx:for-index="si" class="edit-row edit-blk">
+          <view class="edit-row-head">
+            <text class="blk-n">依据 {{si + 1}}</text>
+            <view class="grow"></view>
+            <button class="btn sm" data-i="{{si}}" bindtap="removeSource" hover-class="tap">删除</button>
+          </view>
+          <view class="field">
+            <view class="field-l">标题</view>
+            <input class="input" data-i="{{si}}" data-f="title" bindinput="onSrcField" value="{{item.title}}" placeholder="这篇文章 / 这个视频叫什么" />
+          </view>
+          <view class="field">
+            <view class="field-l">链接</view>
+            <input class="input" data-i="{{si}}" data-f="url" bindinput="onSrcField" value="{{item.url}}" placeholder="https://" />
+          </view>
+          <view class="field">
+            <view class="field-l">类型</view>
+            <view class="fb-choices">
+              <text
+                wx:for="{{sourceTypes}}"
+                wx:for-item="ty"
+                wx:key="key"
+                class="pick {{item.sourceType === ty.key ? 'on' : ''}}"
+                data-i="{{si}}"
+                data-k="{{ty.key}}"
+                bindtap="setSrcType"
+                hover-class="tap"
+              >{{ty.name}}</text>
+            </view>
+          </view>
+          <view class="field">
+            <view class="field-l">平台</view>
+            <input class="input" data-i="{{si}}" data-f="platform" bindinput="onSrcField" value="{{item.platform}}" placeholder="例如：丁香医生" />
+          </view>
+          <view class="field">
+            <view class="field-l">作者</view>
+            <input class="input" data-i="{{si}}" data-f="author" bindinput="onSrcField" value="{{item.author}}" placeholder="作者或机构" />
+          </view>
+          <view class="field">
+            <view class="field-l">日期</view>
+            <input class="input" data-i="{{si}}" data-f="publishedAt" bindinput="onSrcField" value="{{item.publishedAt}}" placeholder="YYYY-MM-DD" />
+          </view>
+          <view class="field">
+            <view class="field-l">为什么信它</view>
+            <textarea class="textarea" data-i="{{si}}" data-f="note" bindinput="onSrcField" value="{{item.note}}" maxlength="-1" />
+          </view>
+          <view class="field">
+            <view class="field-l">支撑哪几条要点</view>
+            <view class="fb-choices">
+              <text
+                wx:for="{{item.linkChoices}}"
+                wx:for-item="lc"
+                wx:key="id"
+                class="pick {{lc.on ? 'on' : ''}}"
+                data-i="{{si}}"
+                data-pid="{{lc.id}}"
+                bindtap="toggleSrcPoint"
+                hover-class="tap"
+              >{{lc.label}}</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="blk-ops">
+          <button class="btn sm" bindtap="addSource" hover-class="tap">加一条依据</button>
+        </view>
+      </view>
+
+      <view class="actions">
+        <button class="btn" bindtap="saveDraft" hover-class="tap" disabled="{{saving}}">存草稿</button>
+        <button class="btn pri" bindtap="publish" hover-class="tap" disabled="{{saving}}">{{saving ? '保存中' : '发布'}}</button>
+      </view>
+    </view>
+  </block>
+</view>
