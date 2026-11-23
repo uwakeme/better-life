@@ -60,6 +60,13 @@ function envBool (key, fallback) {
   return v === '1' || v.toLowerCase() === 'true' || v.toLowerCase() === 'yes';
 }
 
+function envNum (key, fallback) {
+  const raw = env(key, '');
+  if (raw === '') return fallback;
+  const v = Number(raw);
+  return isNaN(v) ? fallback : v;
+}
+
 function envList (key) {
   const v = env(key, '');
   if (!v) return [];
@@ -147,7 +154,9 @@ const config = {
     rrfK: envInt('RRF_K', 60),
     vectorTopK: envInt('VECTOR_TOP_K', 30),
     keywordTopK: envInt('KEYWORD_TOP_K', 30),
-    limit: envInt('SEARCH_LIMIT', 20)
+    limit: envInt('SEARCH_LIMIT', 20),
+    /** 相对阈值：分数低于最佳结果的这一比例就不返回（泛词命中会刷屏） */
+    relativeCutoff: envNum('SEARCH_RELATIVE_CUTOFF', 0.35)
   },
 
   /* ---------- 限流（§8.4） ---------- */

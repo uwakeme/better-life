@@ -158,15 +158,7 @@ Page({
       var items = res.items || [];
       var cards = [];
       for (var i = 0; i < items.length; i++) {
-        var hit = '';
-        var matched = items[i].matchedOn || [];
-        for (var j = 0; j < matched.length; j++) {
-          var m = String(matched[j]);
-          if (m.indexOf('point:') === 0) { hit = '命中要点：' + m.slice(6); break; }
-          if (m.indexOf('keyword:') === 0) { hit = '命中关键词：' + m.slice(8); break; }
-          if (m.indexOf('tag:') === 0) { hit = '命中标签：' + m.slice(4); break; }
-          if (m === 'title') { hit = '命中标题'; break; }
-        }
+        var hit = view.hitLabel(items[i].matchedOn);
         cards.push(view.cardView(items[i].experience, hit));
       }
       /* 只有提交过的查询才进历史 */

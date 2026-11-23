@@ -131,9 +131,37 @@ function alsoSupports (source, points) {
   return names.join('、');
 }
 
+/**
+ * 命中原因 → 中文标签
+ *
+ * 后端回的是结构化前缀（point: / keyword: / tag: / summary: / title / semantic），
+ * 翻译只写这一份，页面直接拿中文标签，不各自解析前缀。
+ */
+var HIT_PREFIX = [
+  { prefix: 'point:', label: '命中要点：' },
+  { prefix: 'keyword:', label: '命中关键词：' },
+  { prefix: 'tag:', label: '命中标签：' },
+  { prefix: 'summary:', label: '命中结论：' }
+];
+
+function hitLabel (matchedOn) {
+  var list = matchedOn || [];
+  for (var i = 0; i < list.length; i++) {
+    var m = String(list[i]);
+    for (var j = 0; j < HIT_PREFIX.length; j++) {
+      var p = HIT_PREFIX[j];
+      if (m.indexOf(p.prefix) === 0) return p.label + m.slice(p.prefix.length);
+    }
+    if (m === 'title') return '命中标题';
+    if (m === 'semantic') return '语义相近';
+  }
+  return '';
+}
+
 module.exports = {
   COLORS: COLORS,
   COLOR_HEX: COLOR_HEX,
+  hitLabel: hitLabel,
   cardView: cardView,
   stanceView: stanceView,
   pointView: pointView,

@@ -45,10 +45,32 @@ function bigrams (text) {
   return uniq;
 }
 
+/**
+ * 泛词表：只做「不参与召回」，不做分词
+ *
+ * 为什么需要：§7.4 决定不做中文分词扩展（不装 PG 扩展），于是查询被切成 bigram。
+ *   但「怎么」「什么」「可以」这类 bigram 在几十条经验里都出现，
+ *   谁沾上就等于命中 —— 搜「空调滤网怎么洗」会把所有带「怎么」的经验都顶上来。
+ *   把它们剔掉，召回就干净了；这不是分词，只是去掉没有信息量的字组。
+ *   ⚠️ 整条查询全是泛词时（用户只搜「怎么」）不能一个都不留，退回原样。
+ */
+const GENERIC = {
+  '怎么': 1, '么办': 1, '怎样': 1, '么样': 1, '如何': 1, '什么': 1, '么事': 1,
+  '哪个': 1, '哪些': 1, '为什': 1, '是不': 1, '不是': 1, '可以': 1, '应该': 1,
+  '需要': 1, '自己': 1, '一下': 1, '有没': 1, '没有': 1, '能不': 1, '不能': 1,
+  '不要': 1, '想要': 1, '这个': 1, '那个': 1, '的话': 1, '好的': 1, '多少': 1,
+  '少钱': 1, '哪儿': 1, '哪里': 1, '是否': 1, '还是': 1, '为吗': 1, '是吗': 1
+};
+
 /** 关键词路：逐 bigram 查，累加到经验上 */
 async function keywordRoute (query, filters) {
-  const grams = bigrams(query);
-  if (!grams.length) return { ranked: [], matched: {} };
+  const all = bigrams(query);
+  if (!all.length) return { ranked: [], matched: {} };
+  /* 剔掉泛词。整条查询都是泛词（「怎么」「怎么办」这种）说明没有任何检索信号，
+     如实返回空结果 —— 硬凑一批「哪儿都算命中」的经验只会误导人。 */
+  const meaningful = all.filter(function (g) { return !GENERIC[g]; });
+  if (!meaningful.length) return { ranked: [], matched: {} };
+  const grams = meaningful;
 
   const scores = {};
   const matched = {};
@@ -74,30 +96,37 @@ async function keywordRoute (query, filters) {
     }
     if (filters && filters.stance) {
       params.push(String(filters.stance));
-      where += ' AND EXISTS (SELECT 1 FROM points sp WHERE sp.experience_id = e.id AND sp.stance = $' + params.length + ')';
+      /* 无相关子查询 —— 相关子查询在 pg-mem 里会报「column does not exist」 */
+      where += ' AND e.id IN (SELECT experience_id FROM points WHERE stance = $' + params.length + ')';
     }
 
-    /* 经验自身：标题 3 / 摘要 2 / 正文 1 */
+    /* 经验自身：标题 3 / 摘要 2 / 搜索关键词 2；正文只作加分，不单独算数 */
     const expRes = await db.query(
       'SELECT e.id, e.title, e.summary, e.search_keywords, ' +
       '(CASE WHEN LOWER(e.title) LIKE $1 THEN 3 ELSE 0 END + ' +
       ' CASE WHEN LOWER(e.summary) LIKE $1 THEN 2 ELSE 0 END + ' +
-      ' CASE WHEN LOWER(e.body) LIKE $1 THEN 1 ELSE 0 END) AS w ' +
+      ' CASE WHEN LOWER(e.search_keywords::text) LIKE $1 THEN 2 ELSE 0 END) AS wmain, ' +
+      '(CASE WHEN LOWER(e.body) LIKE $1 THEN 1 ELSE 0 END) AS wbody ' +
       'FROM experiences e WHERE ' + where + ' AND ' +
-      '(LOWER(e.title) LIKE $1 OR LOWER(e.summary) LIKE $1 OR LOWER(e.body) LIKE $1 ' +
+      '(LOWER(e.title) LIKE $1 OR LOWER(e.summary) LIKE $1 ' +
       ' OR LOWER(e.search_keywords::text) LIKE $1) ' +
       'LIMIT ' + config.search.keywordTopK,
       params
     );
     for (const row of expRes.rows) {
-      const w = Number(row.w) || 0;
-      if (!w) continue;
-      bump(row.id, w, null);
+      const wmain = Number(row.wmain) || 0;
+      if (!wmain) continue;
+      /* 命中标题 / 结论也要说清楚，不能只有一条没有理由的结果 */
+      if (String(row.title || '').toLowerCase().indexOf(gram) >= 0) bump(row.id, 0, 'title');
+      else if (String(row.summary || '').toLowerCase().indexOf(gram) >= 0) bump(row.id, 0, 'summary');
+      /* 正文权重只在标题/摘要/关键词已经命中时作为加分 ——
+         正文很长，「怎么」这种泛词到处都是，只靠正文命中会把不相干的经验顶上来。 */
+      bump(row.id, wmain + (Number(row.wbody) || 0), null);
       /* 命中搜索关键词时如实标注（§2.6） */
       const kws = row.search_keywords || [];
       for (const kw of kws) {
         if (String(kw).toLowerCase().indexOf(gram) >= 0) {
-          bump(row.id, 2, '关键词：' + kw);
+          bump(row.id, 2, 'keyword:' + kw);
         }
       }
     }
@@ -105,17 +134,20 @@ async function keywordRoute (query, filters) {
     /* 要点：要点标题 3 / 要点详情 1 */
     const pointRes = await db.query(
       'SELECT p.id, p.experience_id, p.title, ' +
-      '(CASE WHEN LOWER(p.title) LIKE $1 THEN 3 ELSE 0 END + ' +
-      ' CASE WHEN LOWER(p.detail) LIKE $1 THEN 1 ELSE 0 END) AS w ' +
+      '(CASE WHEN LOWER(p.title) LIKE $1 THEN 3 ELSE 0 END) AS wt, ' +
+      '(CASE WHEN LOWER(p.detail) LIKE $1 THEN 1 ELSE 0 END) AS wd ' +
       'FROM points p JOIN experiences e ON e.id = p.experience_id ' +
       'WHERE ' + where + ' AND (LOWER(p.title) LIKE $1 OR LOWER(p.detail) LIKE $1) ' +
       'LIMIT ' + config.search.keywordTopK,
       params
     );
     for (const row of pointRes.rows) {
-      const w = Number(row.w) || 0;
-      if (!w) continue;
-      bump(row.experience_id, w, '命中要点：' + row.title);
+      const wt = Number(row.wt) || 0;
+      const wd = Number(row.wd) || 0;
+      if (!wt && !wd) continue;
+      /* 只在要点详情里蹭到泛词、这条经验又没有任何其它命中 —— 不算命中 */
+      if (!wt && scores[String(row.experience_id)] === undefined) continue;
+      bump(row.experience_id, wt + wd, 'point:' + row.title);
     }
   }
 
@@ -215,7 +247,22 @@ async function search (body) {
     return a.id - b.id;
   });
   const limit = db.limit(b.limit, config.search.limit);
-  const top = list.slice(0, limit);
+  /* 明显弱于最佳结果的不占位 —— bigram 没法分词，「怎么」这种泛词在摘要里到处命中，
+     不设阈值就会用一堆不相干的经验把结果刷满。 */
+  const topScore = list.length ? list[0].score : 0;
+  const cutoff = topScore * config.search.relativeCutoff;
+  const kept = list.filter(function (x) { return x.score >= cutoff; });
+  /* RRF 只看排名，分数几乎一样 —— 相对阈值要落在「关键词路的原始分」上才有效 */
+  const kwScore = {};
+  for (const r of kw.ranked) kwScore[String(r.id)] = r.score;
+  const maxKw = kw.ranked.length ? kw.ranked[0].score : 0;
+  const kwCutoff = maxKw * config.search.relativeCutoff;
+  const kept2 = kept.filter(function (x) {
+    const s = kwScore[String(x.id)];
+    if (s === undefined) return true;   /* 只来自向量路的，保留 */
+    return s >= kwCutoff;
+  });
+  const top = kept2.slice(0, limit);
 
   /* 取经验本体 */
   const ids = top.map(function (t) { return t.id; });
@@ -239,7 +286,7 @@ async function search (body) {
     const row = expMap[String(t.id)];
     if (!row) continue;
     const reasons = (kwMatched[String(t.id)] || []).slice();
-    if (vectorIds[String(t.id)] && reasons.indexOf('语义相近') < 0) reasons.push('语义相近');
+    if (vectorIds[String(t.id)] && reasons.indexOf('semantic') < 0) reasons.push('semantic');
     items.push({
       experience: {
         id: Number(row.id),

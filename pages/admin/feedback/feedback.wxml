@@ -82,20 +82,22 @@
           <view class="fb-choices">
             <view
               wx:for="{{choices}}"
+              wx:for-item="ch"
               wx:key="key"
-              class="pick {{pick === item.key ? 'on' : ''}}"
-              data-k="{{item.key}}"
+              class="pick {{pick === ch.key ? 'on' : ''}}"
+              data-k="{{ch.key}}"
               bindtap="setPick"
               hover-class="tap"
-            >{{item.name}}</view>
+            >{{ch.name}}</view>
           </view>
           <view class="fb-choices" style="margin-top: 10rpx;">
             <text
               wx:for="{{choices}}"
+              wx:for-item="ch"
               wx:key="key"
               class="fb-tip"
-              wx:if="{{pick === item.key}}"
-            >{{item.desc}}</text>
+              wx:if="{{pick === ch.key}}"
+            >{{ch.desc}}</text>
           </view>
 
           <view class="fb-legend">回复（选「只回话」时必填）</view>

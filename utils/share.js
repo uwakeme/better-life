@@ -25,17 +25,12 @@ function detailShare (experience) {
   };
 }
 
-/** 搜索页分享：带上预填关键词 */
-function searchShare (query) {
-  return {
-    title: '生活经验库 · 找经验',
-    path: '/pages/search/search?q=' + encodeURIComponent(query || ''),
-    imageUrl: ''
-  };
-}
-
+/**
+ * 一期只分享详情页（设计文档 §10.1）。
+ * 搜索页是 tabBar 页，热启动时 wx.switchTab 带不了 query，
+ * 「搜索页带 q 的分享卡」这条路留到二期真要做了再补（那时需要一个非 tabBar 的中转页）。
+ */
 module.exports = {
   detailPath: detailPath,
-  detailShare: detailShare,
-  searchShare: searchShare
+  detailShare: detailShare
 };
