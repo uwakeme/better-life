@@ -1,0 +1,17 @@
+<view class="navbar" style="padding-top: {{barHeight}}px;">
+  <view class="nav-left">
+    <view wx:if="{{showBack}}" class="back" bindtap="onBack" hover-class="tap">
+      <image class="nav-ic" src="/assets/icons/back.png" />
+      <text>返回</text>
+    </view>
+    <text class="nav-title">{{title}}</text>
+  </view>
+  <view class="nav-right" style="margin-right: {{rightReserve}}px;">
+    <view wx:if="{{showStar}}" class="act {{starred ? 'on' : ''}}" bindtap="onStar" hover-class="tap">
+      <image class="act-img" src="/assets/icons/bookmark.png" />
+    </view>
+    <button wx:if="{{showShare}}" class="act act-btn" open-type="share" hover-class="tap">
+      <image class="act-img" src="/assets/icons/share.png" />
+    </button>
+  </view>
+</view>

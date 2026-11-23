@@ -1,0 +1,11 @@
+<view class="card {{card.color}}" bindtap="onTap" hover-class="tap">
+  <view class="card-t">{{card.title}}</view>
+  <view class="card-s">{{card.summary}}</view>
+  <view class="card-m">
+    <text wx:if="{{card.categoryName}}" class="chip">{{card.categoryName}}</text>
+    <text wx:if="{{card.stanceText}}" class="chip">{{card.stanceText}}</text>
+    <text wx:if="{{card.updated}}" class="chip">更新 {{card.updated}}</text>
+    <text wx:for="{{card.tags}}" wx:key="*this" class="chip">{{item}}</text>
+    <text wx:if="{{card.hit}}" class="chip hit">{{card.hit}}</text>
+  </view>
+</view>

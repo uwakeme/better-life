@@ -1,0 +1,45 @@
+.card {
+  background: var(--s-cream);
+  border-radius: 40rpx;
+  padding: 30rpx 30rpx 28rpx;
+  box-shadow: var(--sh-rpx) var(--shadow);
+  position: relative;
+  margin-bottom: 26rpx;
+}
+.card.s-lemon { background: var(--s-lemon); }
+.card.s-mint { background: var(--s-mint); }
+.card.s-peach { background: var(--s-peach); }
+.card.s-sky { background: var(--s-sky); }
+.card.s-lilac { background: var(--s-lilac); }
+.card.s-cream { background: var(--s-cream); }
+.card.s-wheat { background: var(--s-wheat); }
+.card.s-slate { background: var(--s-slate); }
+.card-t {
+  font-size: 33rpx;
+  font-weight: 900;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.card-s {
+  margin-top: 12rpx;
+  font-size: 27rpx;
+  line-height: 1.75;
+  color: var(--ink-2);
+}
+.card-m {
+  margin-top: 20rpx;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.chip {
+  background: var(--chip-bg);
+  border-radius: 999rpx;
+  padding: 2rpx 18rpx;
+  font-size: 24rpx;
+  color: var(--ink-2);
+  margin-right: 12rpx;
+  margin-bottom: 10rpx;
+}
+.chip.hit { background: var(--ink); color: #fff; }
+.tap { opacity: .78; }

@@ -1,0 +1,4 @@
+<view class="sticker {{stance.tone}} {{sm ? 'sm' : ''}}">
+  <text class="sticker-sym">{{stance.sym}}</text>
+  <text>{{stance.text}}</text>
+</view>

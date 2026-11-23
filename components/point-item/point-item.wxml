@@ -1,0 +1,21 @@
+<view class="point" bindtap="onToggle">
+  <view class="point-h">
+    <text class="point-n">{{point.index + 1}}</text>
+    <text class="point-t">{{point.title}}</text>
+    <stance-badge stance="{{point.stanceView}}" />
+  </view>
+  <view wx:if="{{open}}" class="point-b">
+    <view wx:if="{{point.detail}}" class="point-d">{{point.detail}}</view>
+    <view wx:if="{{point.appliesTo}}" class="point-a">适用：{{point.appliesTo}}</view>
+    <view class="point-sum">
+      <text>依据 {{point.sourceCount}} 条</text>
+      <text class="point-sum-x">收起</text>
+    </view>
+    <view class="point-src">
+      <block wx:if="{{point.sources.length}}">
+        <source-item wx:for="{{point.sources}}" wx:key="id" source="{{item}}" compact bind:copy="onCopy" />
+      </block>
+      <text wx:else class="point-none">这条要点还没有关联依据。</text>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,15 @@
+.pills { display: flex; flex-wrap: wrap; gap: 16rpx; padding: 20rpx 32rpx 12rpx; }
+.pills-label { width: 100%; font-size: 25rpx; color: var(--ink-3); padding-bottom: 4rpx; }
+.pills-row { flex-wrap: nowrap; overflow-x: auto; }
+.pill {
+  border: none;
+  background: var(--card);
+  border-radius: 999rpx;
+  padding: 16rpx 26rpx;
+  font-size: 26rpx;
+  color: var(--ink-2);
+  box-shadow: var(--sh-sm-rpx) var(--shadow-sm);
+  flex: 0 0 auto;
+}
+.pill.on { background: var(--ink); color: #fff; }
+.tap { opacity: .78; }

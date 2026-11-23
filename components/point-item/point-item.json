@@ -1,0 +1,1 @@
+{ "component": true, "usingComponents": { "stance-badge": "../stance-badge/stance-badge", "source-item": "../source-item/source-item" } }

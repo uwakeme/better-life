@@ -1,0 +1,62 @@
+.navbar {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding-left: 32rpx;
+  padding-right: 32rpx;
+  padding-bottom: 8rpx;
+}
+.nav-left {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  flex: 1;
+  min-width: 0;
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  background: var(--card);
+  border-radius: 999rpx;
+  padding: 10rpx 24rpx 10rpx 16rpx;
+  font-size: 26rpx;
+  color: var(--ink-2);
+  box-shadow: var(--sh-xs-rpx) var(--shadow-xs);
+}
+.nav-ic { width: 30rpx; height: 30rpx; }
+.nav-title {
+  font-size: 30rpx;
+  font-weight: 900;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+.act {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 50%;
+  background: var(--card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--sh-xs-rpx) var(--shadow-xs);
+}
+.act-img { width: 34rpx; height: 34rpx; }
+.tap { opacity: .7; }
+
+/* button 的默认边框与背景要清掉，否则按钮框会露出来 */
+.act-btn {
+  border: none;
+  margin: 0;
+  padding: 0;
+  line-height: 1;
+}
+.act-btn::after { border: none; }
+.act.on { background: var(--s-wheat); }

@@ -1,0 +1,11 @@
+.state { padding: 80rpx 52rpx; text-align: center; }
+.state-t { font-size: 34rpx; font-weight: 900; color: var(--ink); }
+.state-s { margin-top: 18rpx; font-size: 27rpx; color: var(--ink-2); line-height: 1.85; }
+.state-b { margin-top: 32rpx; display: flex; justify-content: center; gap: 16rpx; }
+.state-err .state-t { color: var(--bad-ink); }
+.skel-list { padding: 8rpx 32rpx; }
+.skel { display: flex; flex-direction: column; gap: 18rpx; pointer-events: none; }
+.skel-l { height: 26rpx; border-radius: 12rpx; background: rgba(37, 48, 63, .09); }
+.skel-l.w60 { width: 60%; }
+.skel-l.w90 { width: 90%; }
+.skel-l.w45 { width: 45%; }

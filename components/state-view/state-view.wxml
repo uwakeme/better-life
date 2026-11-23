@@ -1,0 +1,21 @@
+<view wx:if="{{type === 'loading'}}" class="skel-list">
+  <view class="skel">
+    <view class="skel-l w90"></view>
+    <view class="skel-l w60"></view>
+    <view class="skel-l w45"></view>
+  </view>
+</view>
+<view wx:elif="{{type === 'empty'}}" class="state">
+  <view class="state-t">{{title}}</view>
+  <view wx:if="{{text}}" class="state-s">{{text}}</view>
+  <view wx:if="{{actionText}}" class="state-b">
+    <button class="btn pri" bindtap="onAction">{{actionText}}</button>
+  </view>
+</view>
+<view wx:else class="state {{type === 'error' || type === 'offline' ? 'state-err' : ''}}">
+  <view class="state-t">{{title}}</view>
+  <view wx:if="{{text}}" class="state-s">{{text}}</view>
+  <view wx:if="{{actionText}}" class="state-b">
+    <button class="btn pri" bindtap="onAction">{{actionText}}</button>
+  </view>
+</view>

@@ -1,0 +1,17 @@
+.sticker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  border-radius: 999rpx;
+  padding: 6rpx 18rpx;
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #fff;
+  box-shadow: var(--sh-xs-rpx) var(--shadow-sm);
+  white-space: nowrap;
+}
+.sticker.good { background: var(--good); }
+.sticker.bad { background: var(--bad); }
+.sticker.neutral { background: var(--neutral); }
+.sticker.sm { padding: 4rpx 14rpx; font-size: 22rpx; }
+.sticker-sym { font-size: 24rpx; }

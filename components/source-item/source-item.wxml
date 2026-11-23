@@ -1,0 +1,12 @@
+<view class="strip {{compact ? 'strip-compact' : ''}}">
+  <view wx:if="{{source.badge}}" class="strip-badge">{{source.badge}}</view>
+  <view class="strip-t">{{source.title}}</view>
+  <view wx:if="{{source.meta}}" class="strip-m">{{source.typeLabel}} · {{source.meta}}</view>
+  <view wx:if="{{source.note}}" class="strip-n">为什么信它：{{source.note}}</view>
+  <view class="strip-link">
+    <image class="chip-img" src="/assets/icons/link.png" />
+    <text>{{source.host}}</text>
+  </view>
+  <view wx:if="{{source.also}}" class="strip-also">同时支撑：{{source.also}}</view>
+  <button class="copy" bindtap="onCopy" hover-class="tap">复制链接</button>
+</view>
