@@ -1,12 +1,13 @@
 # life-better 设计文档
 
 > 生活经验库 · 微信小程序
-> 状态：设计已确认，待实施
+> 状态：设计已确认；**小程序端与后端代码已落地（未部署）**
 > 日期：2026-11-23
-> 版本：v1.6
+> 版本：v1.7
 > 修订脉络：2026-11-20 首轮审查 + 第二轮复审 → 2026-11-21 界面文案统一书面语 →
 > 2026-11-22 五项产品决策落地 → 2026-11-23 文档整理 →
-> 2026-11-23 第三轮设计审查落地（39 条问题逐条核对，见 §19 第 6 轮）。
+> 2026-11-23 第三轮设计审查落地（39 条问题逐条核对，见 §19 第 6 轮）→
+> 2026-11-23 小程序端与后端落地（实施轮，见 §19 第 7 轮）。
 > 每一轮改了什么，逐条写在 §19 —— 审查 / 复审报告文件改完即删，不在仓库里留；
 > 本文档各节就是改完之后的正式版本。
 
@@ -198,7 +199,7 @@ schema 支撑不了原型已经展示的"按领域筛标签"。v1.1 定稿：`ca
 | --- | --- | --- |
 | `pages/detail/detail` | `id` | 经验 id；分享链接带的就是它 |
 | `pages/category/category` | `categoryId`、`tagId?` | 领域与二级标签 |
-| `pages/search/search` | `q?` | 预填关键词（从分享卡片或外部进入） |
+| `pages/search/search` | `q?` | 预填关键词（外部进入时）。搜索页是 tabBar 页：冷启动能从 `onLoad` 拿到 `q`，热启动（应用已在后台）参数不会重新进 `onLoad`。一期只分享详情页（§10.1），这条路径踩不到 |
 | `pages/source/source` | `experienceId` | 来源清单 |
 
 ### 3.4 交互要点
@@ -364,11 +365,11 @@ v1.1 定稿：**feedbacks.kind 去掉 useful / not_useful**，只留内容层面
 | 注释用中文，文件头 `/** */` 说明职责与关键约定 | |
 | 视觉令牌走 `styles/tokens.wxss` | 页面根节点加 `class="tk"` 继承 |
 
-### 5.3 目标目录结构（实施后）
+### 5.3 目录结构（实施后的实际样子）
 
-> 下面是**实施完成后**的仓库结构，**不是当前仓库的样子**。
-> 当前仓库只有 `design/`（高保真原型）、`docs/`（本设计文档与审查记录）与 `scripts/`（原型自检），
-> 后端与小程序端尚未开工。
+> 下面是**实施完成后**的仓库结构 —— 与仓库现状一致。
+> 与初稿的差别：没有 `controllers/` 这一层（服务层直接对外，薄控制器没必要），
+> 组件从 4 个增加到 7 个，工具模块从 6 个增加到 11 个。
 
 ```
 life-better/
@@ -377,17 +378,25 @@ life-better/
 ├─ config/index.js            全局配置（apiBaseUrl / embedding 开关）
 ├─ pages/                     14 个页面，四件套 .js/.json/.wxml/.wxss
 ├─ components/
-│  ├─ stance-badge/           要点立场色标
-│  ├─ source-item/            来源条目（含复制链接，§16 第 8 条）
+│  ├─ nav-bar/                全站自定义导航（§14 D12）
 │  ├─ experience-card/        经验卡片（列表/搜索通用）
-│  └─ empty-state/            空状态
+│  ├─ point-item/             要点卡（折叠展开 + 内联依据）
+│  ├─ source-item/            来源条目（含复制链接，§16 第 8 条）
+│  ├─ stance-badge/           要点立场色标
+│  ├─ tag-pills/              标签组
+│  └─ state-view/             加载 / 错误 / 空 状态视图
 ├─ utils/
-│  ├─ api.js                  ★ 唯一取数入口
-│  ├─ cloud.js                ★ 唯一后端出口
+│  ├─ api.js                  ★ 唯一取数入口（后端优先，失败回落演示数据）
+│  ├─ cloud.js                ★ 唯一后端出口（页面里不得出现 wx.request）
 │  ├─ auth.js                 token 存取与登录态
+│  ├─ storage.js              本机存储封装
+│  ├─ role.js                 角色与权限判定（三层校验的前端那一层）
+│  ├─ local.js                本地演示数据
+│  ├─ view.js                 视图模型（便签色、命中原因、依据分组）
 │  ├─ format.js               时间/数字/计数格式化
 │  ├─ share.js                分享参数拼装
-│  └─ search.js               防抖、大写归一、结果聚合
+│  ├─ search.js               防抖、归一、结果聚合
+│  └─ nav.js                  导航与角色入口裁剪
 ├─ data/                      演示数据集（离线可跑通全流程）
 ├─ styles/
 │  ├─ tokens.wxss             设计令牌
@@ -395,20 +404,23 @@ life-better/
 ├─ server/
 │  ├─ src/
 │  │  ├─ index.js / app.js
-│  │  ├─ config.js            环境配置（.env 读取）
-│  │  ├─ schema.sql           建表脚本
-│  │  ├─ routes/              public.js / me.js / admin.js / search.js
-│  │  ├─ controllers/         一层薄控制器
+│  │  ├─ config.js            环境配置（自写 .env 解析）
+│  │  ├─ db.js                双后端（PostgreSQL / pg-mem）+ 事务与主键
+│  │  ├─ schema.sql           建表脚本（11 张表）
+│  │  ├─ routes/              public.js / me.js / admin.js / search.js / seccheck.js
 │  │  ├─ services/            业务逻辑（见 §5.1）
 │  │  ├─ dao/                 数据库访问 + camelCase 转换
-│  │  └─ middleware/          auth.js / admin.js / seccheck.js
-│  ├─ scripts/                服务端自检
+│  │  ├─ lib/to-camel.js      snake_case ↔ camelCase 转换
+│  │  └─ middleware/          error.js / auth.js
+│  ├─ scripts/                seed.js / selftest.js / http-test.js / reindex.js / cases.js
+│  ├─ sql/seed.sql            由 data/ 生成的种子 SQL（可 review）
 │  └─ package.json
-├─ scripts/                   仓库级自检（见 §12，实施时新建）
+├─ scripts/                   仓库级自检（见 §12）
+│  ├─ _kit.js                 共享断言套件与 WXML 树解析
+│  ├─ lint-wxml.js / check-modules.js / verify-*.js
+│  └─ gen-*.mjs               图标、占位图、种子 SQL 的生成脚本
 ├─ docs/
-│  ├─ better-life-design.md   本设计文档
-│  └─ screenshots/            实施期由 verify-in-devtools.js 产出的页面截图
-│                              （原型阶段的逐页截图已不再保留 —— 设计改动频繁，留旧图只会误导）
+│  └─ better-life-design.md   本设计文档
 └─ design/                    视觉稿与高保真原型（已在仓库里）
 ```
 
@@ -1171,22 +1183,30 @@ onShareAppMessage () {
 
 沿用油走势项目的 `scripts/verify-*.js` 风格，有错 exit 1，改完必跑。
 
-> **下面是实施时待建的脚本清单**（服务于真机与后端）。
-> 原型阶段的自检 `scripts/verify-prototype.mjs` 已于 2026-11-23 随第三轮审查重建，
-> 当前 **174 项断言全绿**：14 页 × 2 身份 × 10 场景渲染冒烟、状态级行为断言、CSS 对比度复算、口径守护。
+> **实施后的脚本清单**（服务于真机与后端）。九支仓库级自检里有八支是断言脚本（共 **342 项断言**），
+> 第九支 `verify-links.js` 逐条探测 62 条来源链接（当前 **62/62 可达**）。
+> 服务端另有 `selftest.js` 与 `http-test.js`，**各 101 项断言全绿**（19 组）。
+> 原型阶段的自检 `scripts/verify-prototype.mjs` 仍在仓库里（§12.1），当前 **174 项断言全绿**：
+> 14 页 × 2 身份 × 10 场景渲染冒烟、状态级行为断言、CSS 对比度复算、口径守护。
 
-| 脚本 | 检查内容 |
-| --- | --- |
-| `scripts/verify-prototype.mjs` | **已存在**：原型自检。渲染冒烟 + 状态级行为断言 + 对比度复算 + 口径守护（§12.1） |
-| `scripts/lint-wxml.js` | WXML 静态检查（非法标签、事件绑定缺失、路径写错） |
-| `scripts/check-modules.js` | 运行时模块 + 服务端模块加载冒烟，挡"删了函数体留着引用" |
-| `scripts/verify-data.js` | 数据层自检（§6.3 的 12 条完整性断言） |
-| `scripts/verify-search.js` | 检索自检：固定查询集 → 期望命中（回归），RRF 排序稳定，降级链可用 |
-| `scripts/verify-contract.js` | 端到端契约自检：后端真实响应 → 前端页面渲染结果 |
-| `scripts/verify-embedding.js` | embedding provider 自检：维度对得上、批量接口正常、中文不乱码 |
-| `server/scripts/http-test.js` | 服务端接口冒烟：26 组 API 逐个打一遍，校验响应包结构与鉴权行为 |
-| `server/scripts/selftest.js` | 服务端单元自检：DAO 的 camelCase 转换、RRF 融合、embedding 文本拼装 |
-| `scripts/verify-in-devtools.js` | 微信开发者工具自动化：逐页截图 + 运行时异常捕获 |
+| 脚本 | 检查内容 | 状态 |
+| --- | --- | --- |
+| `scripts/verify-prototype.mjs` | 原型自检。渲染冒烟 + 状态级行为断言 + 对比度复算 + 口径守护（§12.1） | 已存在（174 项全绿） |
+| `scripts/lint-wxml.js` | WXML 静态检查（非法标签、事件绑定缺失、路径写错） | 已存在（127 项全绿） |
+| `scripts/check-modules.js` | 运行时模块 + 服务端模块加载冒烟，挡"删了函数体留着引用" | 已存在（68 项全绿） |
+| `scripts/verify-data.js` | 数据层自检（§6.3 的完整性断言） | 已存在（16 项全绿） |
+| `scripts/verify-search.js` | 检索自检：固定查询集 → 期望命中（回归），RRF 排序稳定，降级链可用 | 已存在（42 项全绿） |
+| `scripts/verify-tokens.js` | 样式令牌自检：小程序 `styles/tokens.wxss` 与原型 `design/assets/dir-c.css` 逐令牌对照 + 全矩阵对比度复算 | 已存在（11 项全绿） |
+| `scripts/verify-copy.js` | 界面文案自检：读者侧不出现角色术语、口吻书面语、角色词必须落在守卫内 | 已存在（24 项全绿） |
+| `scripts/verify-pages.js` | 页面自检：14 页结构、路由参数、组件与状态覆盖 | 已存在（42 项全绿） |
+| `scripts/verify-links.js` | 来源链接可达性自检：62 条依据的真实链接逐条探测 + 占位域名黑名单 | 已存在（62/62 可达） |
+| `scripts/verify-contract.js` | 端到端契约自检：前端每个调用都有后端路由 + 响应包结构 + 检索结果结构 | 已存在（12 项全绿） |
+| `server/scripts/selftest.js` | 服务端单元自检：DAO 的 camelCase 转换、RRF 融合、embedding 文本拼装 | 已存在（101 项全绿） |
+| `server/scripts/http-test.js` | 服务端接口冒烟：真起一个服务逐个打 API，校验响应包结构与鉴权行为 | 已存在（101 项全绿） |
+| `server/scripts/reindex.js` | 索引重建：重算已发布经验的索引文档（30 条经验 → 121 个文档） | 已存在 |
+| `scripts/gen-seed-sql.mjs` | 由 `data/*.json` 生成可 review 的 `server/sql/seed.sql` | 已存在 |
+| `scripts/verify-embedding.js` | embedding provider 自检：维度对得上、批量接口正常、中文不乱码 | 未建 —— 一期 embedding 用本地 bigram-hash，不调外部接口；维度与文本拼装已由 `selftest.js` 覆盖，接外部 provider 时再补 |
+| `scripts/verify-in-devtools.js` | 微信开发者工具自动化：逐页截图 + 运行时异常捕获 | 未建 —— 本机不装开发者工具，改用 `wechat-miniprogram-preview` 插件逐页截图巡检 |
 
 **检索自检用例集**（首批，随种子内容一起写）：
 
@@ -1444,6 +1464,9 @@ assert(exp2.useful 未变 && votedUseful(exp2) === false);
 | **B6 社交** | 收藏、投票、反馈、意见箱、内容安全审核、分享卡片 | 反馈能落库→审核→回复 | 端到端链路自检通过 |
 | **B7 内容** | 30 条种子经验（真实来源链接）、9 领域二级标签 | 内容库非空 | `verify-data.js` 完整性断言全绿 |
 | **B8 收尾** | verify-* 全套、devtools 截图、README、GitHub Pages 主页、nginx 配置 | 可交付 | 全套脚本 exit 0 |
+
+> **实施进度（2026-11-23）**：B0–B7 全部完成；B8 完成了三件 —— **九支仓库级自检**、**14 页预览截图巡检**、
+> **README 与设计文档收口**。**GitHub Pages 主页与 nginx 配置未做**：本轮不部署，服务器上的动作由本人执行。
 
 ### 15.3 依赖关系
 
@@ -1781,3 +1804,47 @@ B0
 **产品口径一条没被推翻**：§2.3 立场只到要点级、§2.5 读者侧只留一个日期、
 §4.3 管理员不提交反馈、§16.1 反馈仅管理员可见 —— 这些结论与原型行为都保持原样。
 本轮改的是「把没画完的画完」和「把口径写进断言」，不是重新定义产品。
+
+---
+
+### 第 7 轮 · v1.7（2026-11-23 · 小程序端与后端落地）
+
+前六轮是设计与原型审查；这一轮是**把它写出来**。小程序端 14 页、后端 34 个接口、
+30 条带真实来源链接的种子内容，按 §15.2 的批次顺序一次做完（**未部署**）。
+这一轮把「已经落地的事实」写回设计文档 —— 逐条如下。
+
+**口径层面的改动**
+
+| 改了什么 | 说明 |
+| --- | --- |
+| §3.3 路由参数 | 搜索页的 `q?` 补注：搜索页是 tabBar 页，冷启动能从 `onLoad` 拿到 `q`，热启动不会。一期只分享详情页（§10.1），这条路径踩不到 |
+| §10.1 分享 | 一期只分享详情页。`utils/share.js` 里没人调用的 `searchShare` 已删 —— 它拼的是 tabBar 路径，热启动会丢掉 `q`，留着就是一条走不通的路 |
+| §12 脚本清单 | 从「待建」改成实际清单：九支仓库级自检 + 三支服务端脚本，逐支标了断言数；`verify-embedding` 与 `verify-in-devtools` 标「未建」并写明原因 |
+| §15.2 批次 | 补实施进度：B0–B7 完成，B8 完成三件，Pages 主页与 nginx 未做（不部署） |
+| §5.3 目录结构 | 按实际落地改了文档：`styles/` 单独放两个 wxss，`server/sql/seed.sql` 是生成物 |
+
+**实施中定下的口径（此前文档没写死，现在写死）**
+
+- **标题是任何一次保存的底线**：草稿也必须有标题；结论 / 要点 / 依据三道校验只在发布时追加。前后端同一套口径。
+- **slug**：新建时生成唯一值，更新时保持原值；`slug` 上有 UNIQUE 约束。
+- **检索泛词表**：38 个无信息量 bigram（如「怎么」「什么」）进表；只命中泛词的正文与要点详情**不单独构成命中**，
+  纯泛词查询如实返回空结果，不硬凑。相对阈值落在关键词路的**原始分**上（0.35），不落 RRF 分 —— RRF 分只反映排名，不反映强弱。
+- **命中原因用结构化前缀**（`point:` / `keyword:` / `tag:` / `summary:` / `title` / `semantic`），
+  中文标签由 `utils/view.js` 的 `hitLabel` 统一翻译，页面不再各自解析前缀。
+- **`mode` 如实上报**：本地 embedding 下就是 `keyword`，不报 `hybrid`。
+
+**令牌**：原型 `design/assets/dir-c.css` 补 `--scrim` 令牌，使小程序的 `styles/tokens.wxss` 与原型令牌能逐个对照
+（`verify-tokens.js` 的硬性要求）。
+
+**这一轮修掉的真 bug**（都是自检脚本或实跑发现的，不是审查报告里的）：
+
+- `config.envInt` 把空串当 0 —— `Number('') === 0` 不是 NaN，于是 PORT、限流、RRF_K、检索上限、向量维度全被清零，token 一签发就过期
+- 管理端路由的 `router.use(requireAuth, requireAdmin)` 没限定路径，所有未匹配路由被拦成 401
+- 新建经验的 slug 固定成 `exp-new`，第二条就撞唯一键
+- pg-mem 的 `count(*) FILTER` 会忽略过滤条件，投票的两个计数一直不对
+- pg-mem 的自增计数器每张表从 1 重开，与种子的显式 id 撞车（改成应用层算 `max(id)+1`；真 PG 仍走数据库自增）
+- 反馈盒 `wx:for` 两处嵌套未声明 `wx:for-item`
+- 检索四处：`search_keywords` 命中因权重算成 0 被丢弃；只命中正文泛词的条目刷屏；立场过滤用了相关子查询；命中原因的中文标签与前端契约对不上
+
+**自检结果**：仓库级八支断言脚本 **342 项全绿**，链接自检 **62/62 可达**（46 个站点），
+服务端 `selftest.js` 与 `http-test.js` **各 101 项全绿**（19 组）。
