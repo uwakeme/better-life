@@ -1,4 +1,4 @@
-# life-better 服务端
+# better-life 服务端
 
 > 生活经验库 · 后端（Node + Express + PostgreSQL/pgvector）
 > 产品与技术设计见 [`../docs/better-life-design.md`](../docs/better-life-design.md)（v1.7）

@@ -14,7 +14,7 @@ const config = require('../config');
 
 /** 开发期兜底密钥 —— 生产环境 assertProductionConfig 会拦住 */
 function secret () {
-  return config.tokenSecret || 'life-better-dev-secret';
+  return config.tokenSecret || 'better-life-dev-secret';
 }
 
 function b64url (buf) {

@@ -7,7 +7,7 @@
  */
 module.exports = {
   /** 后端地址；域名未备案前，客户端会自动回落到本地演示数据 */
-  apiBaseUrl: 'https://life-better.uwakeme.top',
+  apiBaseUrl: 'https://better-life.uwakeme.top',
 
   /** 单次请求超时（毫秒） */
   requestTimeout: 8000,
@@ -32,11 +32,11 @@ module.exports = {
   devRole: 'user',
 
   /** 存储 key */
-  searchHistoryKey: 'lifebetter_search_hist',
-  tokenKey: 'lifebetter_token',
-  localStateKey: 'lifebetter_local_state',
-  roleKey: 'lifebetter_dev_role',
-  sceneKey: 'lifebetter_dev_scene',
+  searchHistoryKey: 'betterlife_search_hist',
+  tokenKey: 'betterlife_token',
+  localStateKey: 'betterlife_local_state',
+  roleKey: 'betterlife_dev_role',
+  sceneKey: 'betterlife_dev_scene',
 
   /** 搜索历史最多保留条数（§3.5） */
   searchHistoryMax: 8,

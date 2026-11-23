@@ -297,7 +297,7 @@
     /* 搜索历史只存在用户本机，不上传、不参与任何统计。
        小程序端对应 wx.setStorageSync('search_hist') / wx.getStorageSync；
        原型里落在 localStorage，键名与小程序端保持一致。 */
-    HIST_KEY: 'lifebetter_search_hist',
+    HIST_KEY: 'betterlife_search_hist',
     HIST_MAX: 8,
     hist: [],
     loadHist: function () {

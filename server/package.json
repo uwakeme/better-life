@@ -1,8 +1,8 @@
 {
-  "name": "life-better-server",
+  "name": "better-life-server",
   "version": "1.0.0",
   "private": true,
-  "description": "life-better 生活经验库 · 服务端（Express + PostgreSQL）",
+  "description": "better-life 生活经验库 · 服务端（Express + PostgreSQL）",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",

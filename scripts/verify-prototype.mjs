@@ -170,7 +170,7 @@ for (let i = 0; i < 12; i++) LBC.pushHist('词' + i);
 ok('历史上限 8 条', LBC.hist.length <= 8, '实际 ' + LBC.hist.length);
 eq('空查询不记入历史', (LBC.pushHist(''), LBC.hist.some(function (h) { return h === ''; })), false);
 /* 存储键名与实际写入（沙箱里没有 localStorage 时退化成内存，不报错） */
-eq('历史存储键名固定', LBC.HIST_KEY, 'lifebetter_search_hist');
+eq('历史存储键名固定', LBC.HIST_KEY, 'betterlife_search_hist');
 LBC.clearHist();
 LBC.hist = histSnap;
 

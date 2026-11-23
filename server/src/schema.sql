@@ -1,4 +1,4 @@
--- life-better 建表脚本（设计文档 §6.2 逐字照抄）
+-- better-life 建表脚本（设计文档 §6.2 逐字照抄）
 --
 -- 约定：
 --   1. 库表与列一律 snake_case；业务层用 camelCase，转换只在 DAO 的 toCamel 里做。

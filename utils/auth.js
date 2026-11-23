@@ -31,7 +31,7 @@ function restore () {
     var saved = storage.get(config.tokenKey);
     if (!saved) { resolve(null); return; }
     token = saved;
-    user = storage.getJson('lifebetter_user', null);
+    user = storage.getJson('betterlife_user', null);
     resolve(user);
   });
 }
@@ -41,7 +41,7 @@ function setSession (t, u) {
   token = t || null;
   user = u || null;
   if (token) storage.set(config.tokenKey, token);
-  if (user) storage.setJson('lifebetter_user', user);
+  if (user) storage.setJson('betterlife_user', user);
   return user;
 }
 
@@ -50,7 +50,7 @@ function clear () {
   token = null;
   user = null;
   storage.remove(config.tokenKey);
-  storage.remove('lifebetter_user');
+  storage.remove('betterlife_user');
 }
 
 /** 拿 token（供 utils/cloud.js 拼 Authorization 头） */

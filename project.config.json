@@ -1,9 +1,9 @@
 {
-  "description": "life-better 生活经验库 · 微信小程序",
+  "description": "better-life 生活经验库 · 微信小程序",
   "miniprogramRoot": "./",
   "compileType": "miniprogram",
   "appid": "touristappid",
-  "projectname": "life-better",
+  "projectname": "better-life",
   "setting": {
     "es6": true,
     "enhance": true,

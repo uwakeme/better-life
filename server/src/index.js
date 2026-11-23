@@ -19,7 +19,7 @@ async function main () {
 
   const app = createApp();
   const server = app.listen(config.port, function () {
-    console.log('life-better 后端已启动');
+    console.log('better-life 后端已启动');
     console.log('  端口：' + config.port);
     console.log('  数据库：' + mode.mode);
     console.log('  向量库：' + store + (store === 'memory' ? '（降级：精确余弦暴力检索）' : ''));

@@ -1,5 +1,5 @@
 /**
- * life-better 生活经验库 · 小程序入口
+ * better-life 生活经验库 · 小程序入口
  *
  * 职责：启动时读全局配置、初始化登录态、注册全局错误兜底。
  * 页面不直接在这里取数 —— 取数只走 utils/api.js。
@@ -24,11 +24,11 @@ App({
 
   onError: function (msg) {
     // 运行时异常兜底：不在这里吞错误，只记录，避免整页白屏无从排查。
-    console.error('[life-better] runtime error:', msg);
+    console.error('[better-life] runtime error:', msg);
   },
 
   onPageNotFound: function (res) {
-    console.error('[life-better] page not found:', res.path);
+    console.error('[better-life] page not found:', res.path);
   },
 
   /** 当前生效的配置，供页面读取 devPanel 等开关 */
