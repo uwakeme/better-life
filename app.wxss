@@ -1,0 +1,21 @@
+/**
+ * 全局样式入口
+ *
+ * 职责：引入设计令牌与通用组件类；页面根节点加 class="tk" 继承 CSS 变量。
+ * 页面自己的样式写在各自 wxss 里，这里不放业务样式。
+ */
+@import "styles/tokens.wxss";
+@import "styles/components.wxss";
+
+page {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 28rpx;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+}
+
+view, text, button, input, textarea, scroll-view {
+  box-sizing: border-box;
+}

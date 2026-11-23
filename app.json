@@ -1,0 +1,53 @@
+{
+  "pages": [
+    "pages/home/home",
+    "pages/category/category",
+    "pages/search/search",
+    "pages/detail/detail",
+    "pages/source/source",
+    "pages/mine/mine",
+    "pages/favorites/favorites",
+    "pages/feedback/feedback",
+    "pages/inbox/inbox",
+    "pages/admin/list/list",
+    "pages/admin/edit/edit",
+    "pages/admin/tags/tags",
+    "pages/admin/feedback/feedback",
+    "pages/about/about"
+  ],
+  "window": {
+    "navigationStyle": "custom",
+    "backgroundColor": "#f2e8e3",
+    "backgroundTextStyle": "dark",
+    "enablePullDownRefresh": false
+  },
+  "tabBar": {
+    "color": "#4b5663",
+    "selectedColor": "#25303f",
+    "backgroundColor": "#f8f1ec",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/home/home",
+        "text": "首页",
+        "iconPath": "assets/tabbar/home.png",
+        "selectedIconPath": "assets/tabbar/home-active.png"
+      },
+      {
+        "pagePath": "pages/search/search",
+        "text": "找经验",
+        "iconPath": "assets/tabbar/search.png",
+        "selectedIconPath": "assets/tabbar/search-active.png"
+      },
+      {
+        "pagePath": "pages/mine/mine",
+        "text": "我的",
+        "iconPath": "assets/tabbar/mine.png",
+        "selectedIconPath": "assets/tabbar/mine-active.png"
+      }
+    ]
+  },
+  "sitemapLocation": "sitemap.json",
+  "style": "v2",
+  "lazyCodeLoading": "requiredComponents"
+}

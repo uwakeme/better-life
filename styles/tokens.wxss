@@ -1,0 +1,141 @@
+/**
+ * life-better 设计令牌（便签墙方向）
+ *
+ * 职责：全站唯一的颜色 / 字号 / 圆角 / 阴影 / 间距来源。
+ * 约定：
+ *   1. 每个尺寸令牌都有 px 与 rpx 两份（--x 与 --x-rpx），组件里用 rpx 那份。
+ *      px 那份留给真机校准字重字距时对照（设计文档 §13.5 第 1 项）。
+ *   2. 颜色值与 design/assets/dir-c.css 的 .dir-c 变量块**必须逐一相等**，
+ *      scripts/verify-tokens.js 会比对，漂移即 exit 1。
+ *   3. 正文级文字（≥12px）在任意便签底上的对比度必须 ≥ 4.5:1，
+ *      立场贴纸白字 ≥ 5.3:1 —— 同样由 verify-tokens.js 复算全矩阵。
+ *      当前最低值 bad-ink 4.51:1，余量只剩 0.01，改色后必须立刻重跑。
+ */
+
+page,
+.tk {
+  /* ---------- 底色 ---------- */
+  --paper: #f2e8e3;
+  --paper-2: #f8f1ec;
+  --card: #ffffff;
+
+  /* ---------- 墨色 ---------- */
+  --ink: #25303f;
+  --ink-2: #3f4a57;
+  --ink-3: #4b5663;
+
+  /* ---------- 便签底色（8 色循环 + 珊瑚只留给警示条） ---------- */
+  --s-lemon: #f8dc8e;
+  --s-mint: #b9e3c4;
+  --s-peach: #f9c3a3;
+  --s-sky: #bcd6ee;
+  --s-lilac: #d6c8ec;
+  --s-cream: #fdf6ea;
+  --s-wheat: #ecd9b3;
+  --s-slate: #c8d2da;
+  --s-coral: #f7c3b8;
+
+  /* ---------- 语义色：贴纸底色（配白字，≥ 5.3:1） ---------- */
+  --good: #1f7a4a;
+  --bad: #b3402c;
+  --neutral: #5c6875;
+
+  /* ---------- 语义色：文字与图标（任意便签底上 ≥ 4.5:1） ---------- */
+  --good-ink: #0a6535;
+  --bad-ink: #a22f1b;
+  --neutral-ink: #4d5966;
+  --link-ink: #35588b;
+
+  /* ---------- 阴影与半透明 ---------- */
+  --shadow: rgba(37, 48, 63, .13);
+  --shadow-sm: rgba(37, 48, 63, .09);
+  --shadow-xs: rgba(37, 48, 63, .06);
+  --chip-bg: rgba(255, 255, 255, .62);
+  --glass: rgba(255, 255, 255, .55);
+  --scrim: rgba(37, 48, 63, .74);
+
+  /* ---------- 字体栈 ---------- */
+  --sans: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", sans-serif;
+  /* 楷体只给装饰性批注（适用 / 为什么信它 / 页面引言）；12-13px meta 全部无衬线 */
+  --hand: "Kaiti SC", KaiTi, STKaiti, "楷体", "Kaiti TC", "AR PL UKai CN", "Noto Serif CJK SC", "Source Han Serif SC", serif;
+
+  /* ---------- 圆角（px / rpx 双份） ---------- */
+  --r-pill: 999px;
+  --r-pill-rpx: 999rpx;
+  --r-note: 18px;
+  --r-note-rpx: 36rpx;
+  --r-card: 20px;
+  --r-card-rpx: 40rpx;
+  --r-strip: 14px;
+  --r-strip-rpx: 28rpx;
+  --r-blk: 16px;
+  --r-blk-rpx: 32rpx;
+  --r-field: 14px;
+  --r-field-rpx: 28rpx;
+  --r-sm: 12px;
+  --r-sm-rpx: 24rpx;
+  --r-img: 12px;
+  --r-img-rpx: 24rpx;
+  --r-circle: 50%;
+  --r-circle-rpx: 50%;
+
+  /* ---------- 硬偏移阴影（px / rpx 双份） ---------- */
+  --sh: 4px 5px 0;
+  --sh-rpx: 8rpx 10rpx 0;
+  --sh-sm: 3px 4px 0;
+  --sh-sm-rpx: 6rpx 8rpx 0;
+  --sh-xs: 2px 3px 0;
+  --sh-xs-rpx: 4rpx 6rpx 0;
+
+  /* ---------- 字号（px / rpx 双份） ---------- */
+  --fs-head: 26px;
+  --fs-head-rpx: 52rpx;
+  --fs-detail-t: 24px;
+  --fs-detail-t-rpx: 48rpx;
+  --fs-detail-s: 15.5px;
+  --fs-detail-s-rpx: 31rpx;
+  --fs-title: 16.5px;
+  --fs-title-rpx: 33rpx;
+  --fs-point: 15.5px;
+  --fs-point-rpx: 31rpx;
+  --fs-sec: 15px;
+  --fs-sec-rpx: 30rpx;
+  --fs-body: 14px;
+  --fs-body-rpx: 28rpx;
+  --fs-me: 17px;
+  --fs-me-rpx: 34rpx;
+  --fs-sm: 13.5px;
+  --fs-sm-rpx: 27rpx;
+  --fs-meta: 13px;
+  --fs-meta-rpx: 26rpx;
+  --fs-xs: 12.5px;
+  --fs-xs-rpx: 25rpx;
+  --fs-chip: 12px;
+  --fs-chip-rpx: 24rpx;
+  --fs-tiny: 11.5px;
+  --fs-tiny-rpx: 23rpx;
+
+  /* ---------- 间距（px / rpx 双份） ---------- */
+  --pad: 16px;
+  --pad-rpx: 32rpx;
+  --pad-lg: 14px;
+  --pad-lg-rpx: 28rpx;
+  --gap: 10px;
+  --gap-rpx: 20rpx;
+  --gap-sm: 8px;
+  --gap-sm-rpx: 16rpx;
+  --gap-xs: 6px;
+  --gap-xs-rpx: 12rpx;
+
+  /* ---------- 行高 ---------- */
+  --lh-body: 1.75;
+  --lh-tight: 1.45;
+}
+
+/* 关键令牌的兜底工具类：CSS 变量在旧基础库不生效时，页面至少还有正确颜色 */
+.tk-paper { background: var(--paper); color: var(--ink); }
+.tk-paper-2 { background: var(--paper-2); }
+.tk-ink-2 { color: var(--ink-2); }
+.tk-ink-3 { color: var(--ink-3); }
+.tk-note { background: var(--s-cream); }
+.tk-card { background: var(--card); }
