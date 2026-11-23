@@ -9,6 +9,7 @@ miniprogram_npm/
 # ---- 本地环境与缓存 ----
 .env
 .env.*
+!.env.example
 __pycache__/
 *.py[cod]
 

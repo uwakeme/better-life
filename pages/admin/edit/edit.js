@@ -326,10 +326,11 @@ Page({
   /**
    * 发布前校验 —— 与数据层同一套口径（§4.1）
    * 界面这一份只是提前把话说清楚，护栏本身在数据层。
+   * ⚠️ 标题不在这里 —— 标题是每次保存的底线（草稿也要有），
+   *    由 save() 统一检查，免得同一句话写两遍。
    */
   validate: function () {
     var errors = [];
-    if (!String(this.data.title || '').trim()) errors.push('标题不能为空');
     if (!String(this.data.summary || '').trim()) errors.push('结论不能为空');
     if (!this.data.points.length) errors.push('尚未填写要点，请先补充。');
     if (!this.data.sources.length) errors.push('至少需要 1 条依据，发布前请补充。');
@@ -392,12 +393,15 @@ Page({
   save: function (publish) {
     var self = this;
     if (this.data.saving) return;
+    /* 标题是底线：草稿也必须有标题 */
+    var errors = [];
+    if (!String(this.data.title || '').trim()) errors.push('标题不能为空');
     if (publish) {
-      var errors = this.validate();
-      if (errors.length) {
-        this.setData({ errors: errors });
-        return;
-      }
+      errors = errors.concat(this.validate());
+    }
+    if (errors.length) {
+      this.setData({ errors: errors });
+      return;
     }
     this.setData({ errors: [], saving: true, hint: '' });
     var payload = this.buildPayload();
