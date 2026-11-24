@@ -160,6 +160,12 @@ function main () {
   check('经验正文里保留了口语表达', /一下|怎么|能不能|别/.test(bodies), '正文没有口语痕迹');
   check('内容文件不在界面文案检查范围内', bodies.length > 0);
 
+  group('隐私说明');
+  const privacy = read(path.join(ROOT, 'pages/about/about.wxml'));
+  check('不再声称收藏与搜索记录只存本机', privacy.indexOf('收藏与搜索记录只保存在这台设备上') < 0);
+  check('明确数据同步到服务端', privacy.indexOf('服务端') >= 0);
+  check('明确搜索历史仅存本机', /搜索历史[^。<]*(本机|这台设备)/.test(privacy));
+
   const failed = report('界面文案口径');
   process.exit(failed ? 1 : 0);
 }

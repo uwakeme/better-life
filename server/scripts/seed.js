@@ -156,15 +156,20 @@ async function seed (client) {
     );
   }
 
-  /* 两个演示账号：openid 与 utils/auth.js 的开发模式登录一致 */
-  await q(
-    "INSERT INTO users (openid, nickname, role) VALUES ('dev-user', '读者', 'user') " +
-    "ON CONFLICT (openid) DO NOTHING"
-  );
-  await q(
-    "INSERT INTO users (openid, nickname, role) VALUES ('dev-admin', '维护者', 'admin') " +
-    "ON CONFLICT (openid) DO NOTHING"
-  );
+  /* 两个演示账号：openid 与 utils/auth.js 的开发模式登录一致。
+     ⚠️ 只在内存模式灌 —— 真库里留着 dev-admin 就是留了一个公开后门
+     （配合开发密钥可以自签管理员 token）。生产环境的管理员只从
+     ADMIN_OPENIDS 环境变量提权。 */
+  if (db.isMemory()) {
+    await q(
+      "INSERT INTO users (openid, nickname, role) VALUES ('dev-user', '读者', 'user') " +
+      "ON CONFLICT (openid) DO NOTHING"
+    );
+    await q(
+      "INSERT INTO users (openid, nickname, role) VALUES ('dev-admin', '维护者', 'admin') " +
+      "ON CONFLICT (openid) DO NOTHING"
+    );
+  }
 
   /* 给 dev-user 几条收藏与投票，让计数不是 0 */
   const firstIds = experiences.slice(0, 3).map(function (e) { return Number(e.id); });
@@ -182,44 +187,96 @@ async function seed (client) {
     'INSERT INTO votes (openid, experience_id, useful) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
     ['dev-user', firstIds[1], false]
   );
-  /* 冗余计数按实际行数重算 —— 逐条算，判断放 JS。
-     不用 count(*) FILTER (WHERE …)：pg-mem 会忽略 FILTER 里的条件，
-     把每一行同时算进 good 和 bad。 */
-  for (const id of firstIds) {
-    const favs = await q('SELECT 1 AS hit FROM favorites WHERE experience_id = $1', [id]);
-    await q(
-      'UPDATE experiences SET favorite_count = $2 WHERE id = $1',
-      [id, favs.rows.length]
-    );
-  }
   const allIds = experiences.map(function (e) { return Number(e.id); });
-  for (const id of allIds) {
-    const votes = await q('SELECT useful FROM votes WHERE experience_id = $1', [id]);
-    let good = 0;
-    let bad = 0;
-    for (const row of votes.rows) {
-      if (row.useful) good++;
-      else bad++;
-    }
-    await q(
-      'UPDATE experiences SET useful_count = $2, not_useful_count = $3 WHERE id = $1',
-      [id, good, bad]
-    );
-  }
+  const counts = await recountExperienceCounts(q, allIds);
+  await assertExperienceCounts(q, allIds, counts);
 
-  await resetSequences(null);
+  /* ⚠️ 必须传 client —— 传 null 会让 client.query 抛 TypeError，
+     而 resetSequences 里的 try/catch 会把它吞掉，setval 一次都不执行。
+     结果：显式指定 id 插入之后序列还停在 1，真库上下一次插入就撞主键。 */
+  await resetSequences(client);
   return {
     categories: categories.categories.length,
     tags: categories.tags.length,
     experiences: experiences.length,
-    feedbacks: feedbacks.length
+    feedbacks: feedbacks.length,
+    favorites: counts.favorites,
+    votes: counts.votes,
+    processedFeedbacks: counts.processedFeedbacks
   };
+}
+
+/** 一次读取源表后重算所有经验，避免逐经验 N+1。 */
+async function recountExperienceCounts (q, ids) {
+  const favorites = await q('SELECT experience_id, count(*) AS n FROM favorites GROUP BY experience_id');
+  const votes = await q('SELECT experience_id, useful FROM votes');
+  const feedbacks = await q(
+    "SELECT target_id, count(*) AS n FROM feedbacks WHERE target_type = 'experience' " +
+    "AND status <> 'pending' GROUP BY target_id"
+  );
+  const counts = {};
+  for (const id of ids) counts[String(id)] = { favorites: 0, good: 0, bad: 0, feedback: 0 };
+  for (const row of favorites.rows) {
+    if (counts[String(row.experience_id)]) counts[String(row.experience_id)].favorites = Number(row.n);
+  }
+  for (const row of votes.rows) {
+    const item = counts[String(row.experience_id)];
+    if (!item) continue;
+    if (row.useful) item.good++;
+    else item.bad++;
+  }
+  for (const row of feedbacks.rows) {
+    if (counts[String(row.target_id)]) counts[String(row.target_id)].feedback = Number(row.n);
+  }
+  for (const id of ids) {
+    const item = counts[String(id)];
+    await q(
+      'UPDATE experiences SET favorite_count = $2, useful_count = $3, not_useful_count = $4, ' +
+      'feedback_count = $5 WHERE id = $1',
+      [id, item.favorites, item.good, item.bad, item.feedback]
+    );
+  }
+  return {
+    favorites: favorites.rows.reduce(function (sum, row) { return sum + Number(row.n); }, 0),
+    votes: votes.rows.length,
+    processedFeedbacks: feedbacks.rows.reduce(function (sum, row) { return sum + Number(row.n); }, 0),
+    byExperience: counts
+  };
+}
+
+async function assertExperienceCounts (q, ids, totals) {
+  const rows = await q('SELECT id, favorite_count, useful_count, not_useful_count, feedback_count FROM experiences');
+  let favorites = 0;
+  let votes = 0;
+  let feedback = 0;
+  for (const row of rows.rows) {
+    if (ids.map(String).indexOf(String(row.id)) < 0) continue;
+    const expected = totals.byExperience[String(row.id)];
+    const actual = [Number(row.favorite_count), Number(row.useful_count),
+      Number(row.not_useful_count), Number(row.feedback_count)];
+    const wanted = [expected.favorites, expected.good, expected.bad, expected.feedback];
+    if (actual.some(function (n, i) { return n !== wanted[i]; })) {
+      throw new Error('种子计数断言失败：经验 ' + row.id + ' 存储值与源表不一致');
+    }
+    favorites += Number(row.favorite_count);
+    votes += Number(row.useful_count) + Number(row.not_useful_count);
+    feedback += Number(row.feedback_count);
+  }
+  if (favorites !== totals.favorites || votes !== totals.votes || feedback !== totals.processedFeedbacks) {
+    throw new Error('种子计数断言失败：存储合计与源表不一致');
+  }
 }
 
 /** 直接跑：node server/scripts/seed.js */
 async function main () {
   const memory = process.argv.indexOf('--memory') >= 0;
   const mode = await db.init({ memory: memory });
+  /* 真库上灌数据前先把表建好 —— 空库直接灌会报「relation does not exist」。
+     schema.sql 全是 IF NOT EXISTS，重复执行不会破坏已有数据。 */
+  if (mode.mode === 'postgres') {
+    await db.applySchema();
+    console.log('已按 schema.sql 建表（IF NOT EXISTS，幂等）。');
+  }
   const out = await db.tx(async function (client) {
     return seed(client);
   });

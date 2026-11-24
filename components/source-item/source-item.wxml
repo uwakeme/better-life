@@ -8,5 +8,7 @@
     <text>{{source.host}}</text>
   </view>
   <view wx:if="{{source.also}}" class="strip-also">同时支撑：{{source.also}}</view>
-  <button class="copy" bindtap="onCopy" hover-class="tap">复制链接</button>
+  <!-- catchtap：不冒泡到外层的 onToggle，
+       否则点「复制链接」会把要点折叠起来 -->
+  <button class="copy" catchtap="onCopy" hover-class="tap" aria-label="复制依据链接：{{source.title}}">复制链接</button>
 </view>

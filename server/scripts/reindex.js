@@ -11,9 +11,9 @@
  *   node server/scripts/reindex.js --since=2026-11-01   # 只重建这段时间改过的
  *   node server/scripts/reindex.js --memory         # 在内存库上跑一遍（要先有数据）
  */
+const config = require('../src/config');
 const db = require('../src/db');
 const vectorStore = require('../src/services/vector-store');
-const expDao = require('../src/dao/experiences');
 const expService = require('../src/services/experiences');
 
 function arg (name) {
@@ -26,8 +26,12 @@ function hasFlag (name) {
 }
 
 async function run () {
-  const memory = hasFlag('memory') || !process.env.DATABASE_URL;
+  /* ⚠️ 判断依据必须走 config —— config.js 把 .env 解析进 fileEnv，不写 process.env，
+     所以直接读 process.env.DATABASE_URL 的话，按 README 把库配进 .env 之后
+     这里会静默选成内存库，重建完就退出，真库的索引根本没动。 */
+  const memory = hasFlag('memory') || !config.databaseUrl;
   await db.init({ memory: memory });
+  console.log('目标库：' + (memory ? '内存库（跑完即弃，不落库）' : '真实数据库（' + config.databaseUrl.replace(/:[^:@/]*@/, ':***@') + '）'));
   /* 内存库是空的，先把种子灌进去，否则重建索引只能空跑 */
   if (memory) {
     const { seed } = require('./seed');
@@ -47,25 +51,12 @@ async function run () {
     return;
   }
 
-  const list = await expDao.listForAdmin({ size: 1000 });
-  for (const item of list.items) {
-    if (item.status !== 'published') continue;
-    if (since) {
-      const updated = String(item.updatedAt || '');
-      if (updated.slice(0, 10) < since) continue;
-    }
-    touched++;
-    try {
-      const out = await expService.reindexOne(item.id);
-      total += out.documents;
-      process.stdout.write('.');
-    } catch (e) {
-      console.log('\n第 ' + item.id + ' 条失败：' + (e && e.message ? e.message : e));
-    }
-  }
-  console.log('');
-  console.log('处理 ' + touched + ' 条已发布经验，重建 ' + total + ' 个索引文档。');
+  const out = await expService.reindexAll({ since: since });
+  total = out.documents;
+  touched = out.experiences;
+  console.log('处理 ' + touched + ' 条已发布经验，重建 ' + total + ' 个索引文档，失败 ' + out.failed + ' 条。');
   await db.close();
+  if (out.failed) process.exitCode = 1;
 }
 
 run().catch(function (err) {

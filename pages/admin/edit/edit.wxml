@@ -22,15 +22,15 @@
         <view class="blk-h"><text class="blk-t">结论</text></view>
         <view class="field" style="margin-top: 16rpx;">
           <view class="field-l">标题<text class="req">*</text></view>
-          <input class="input big" placeholder="一句话说清这条经验是什么" value="{{title}}" bindinput="onTitle" />
+          <input class="input big" placeholder="一句话说清这条经验是什么" aria-label="经验标题" value="{{title}}" bindinput="onTitle" />
         </view>
         <view class="field">
           <view class="field-l">结论<text class="req">*</text></view>
-          <textarea class="textarea" placeholder="读者最先看到的一段话" value="{{summary}}" bindinput="onSummary" maxlength="-1" />
+          <textarea class="textarea" placeholder="读者最先看到的一段话" aria-label="经验结论" value="{{summary}}" bindinput="onSummary" maxlength="-1" />
         </view>
         <view class="field">
           <view class="field-l">正文（可空）</view>
-          <textarea class="textarea" placeholder="展开讲一讲" value="{{body}}" bindinput="onBody" maxlength="-1" />
+          <textarea class="textarea" placeholder="展开讲一讲" aria-label="经验正文" value="{{body}}" bindinput="onBody" maxlength="-1" />
         </view>
       </view>
 
@@ -40,32 +40,48 @@
         <view class="field" style="margin-top: 16rpx;">
           <view class="field-l">所属领域</view>
           <view class="fb-choices">
-            <text
+            <button
               wx:for="{{categories}}"
               wx:key="id"
               class="pick {{categoryId === item.id ? 'on' : ''}}"
               data-id="{{item.id}}"
               bindtap="setCategory"
               hover-class="tap"
-            >{{item.name}}</text>
+              aria-role="radio"
+              aria-checked="{{categoryId === item.id}}"
+              aria-label="{{item.name}}"
+            >{{item.name}}</button>
           </view>
         </view>
         <view class="field">
           <view class="field-l">搜索关键词（可空，用顿号隔开）</view>
-          <input class="input" placeholder="例如：洗头水、洗发露" value="{{keywordText}}" bindinput="onKeywords" />
-          <view class="fb-tip">关键词只用于检索召回，读者侧看不到。</view>
+          <input class="input" placeholder="例如：洗头水、洗发露" aria-label="搜索关键词" aria-describedby="edit-keyword-tip" value="{{keywordText}}" bindinput="onKeywords" />
+          <view id="edit-keyword-tip" class="fb-tip">关键词只用于检索召回，读者侧看不到。</view>
+        </view>
+        <view class="field">
+          <view class="field-l">核查日期</view>
+          <input class="input" type="text" placeholder="YYYY-MM-DD" aria-label="核查日期" aria-describedby="edit-reviewed-tip" value="{{reviewedAt}}" bindinput="onReviewedAt" />
+          <view id="edit-reviewed-tip" class="fb-tip">这条经验的内容是什么时候核对过的。</view>
+        </view>
+        <view class="field">
+          <view class="field-l">下次复核日期</view>
+          <input class="input" type="text" placeholder="YYYY-MM-DD" aria-label="下次复核日期" aria-describedby="edit-next-review-tip" value="{{nextReviewAt}}" bindinput="onNextReviewAt" />
+          <view id="edit-next-review-tip" class="fb-tip">留空表示还没安排复核；管理端的「待复核」指标按这个算。</view>
         </view>
         <view class="field">
           <view class="field-l">二级标签</view>
           <view class="fb-choices">
-            <text
+            <button
               wx:for="{{tagView}}"
               wx:key="id"
               class="pick {{item.on ? 'on' : ''}}"
               data-id="{{item.id}}"
               bindtap="toggleTag"
               hover-class="tap"
-            >{{item.name}}</text>
+              aria-role="checkbox"
+              aria-checked="{{item.on}}"
+              aria-label="{{item.name}}"
+            >{{item.name}}</button>
           </view>
         </view>
       </view>
@@ -88,7 +104,7 @@
           <view class="field">
             <view class="field-l">立场</view>
             <view class="fb-choices">
-              <text
+              <button
                 wx:for="{{stances}}"
                 wx:for-item="st"
                 wx:key="key"
@@ -97,20 +113,23 @@
                 data-k="{{st.key}}"
                 bindtap="setPointStance"
                 hover-class="tap"
-              >{{st.name}}</text>
+                aria-role="radio"
+                aria-checked="{{item.stance === st.key}}"
+                aria-label="要点{{pi + 1}}立场：{{st.name}}"
+              >{{st.name}}</button>
             </view>
           </view>
           <view class="field">
             <view class="field-l">要点标题</view>
-            <input class="input" data-i="{{pi}}" bindinput="onPointTitle" value="{{item.title}}" placeholder="一句话说清这条要点" />
+            <input class="input" data-i="{{pi}}" bindinput="onPointTitle" bindblur="onPointTitleBlur" aria-label="要点{{pi + 1}}标题" value="{{item.title}}" placeholder="一句话说清这条要点" />
           </view>
           <view class="field">
             <view class="field-l">为什么（理由）</view>
-            <textarea class="textarea" data-i="{{pi}}" bindinput="onPointDetail" value="{{item.detail}}" maxlength="-1" />
+            <textarea class="textarea" data-i="{{pi}}" bindinput="onPointDetail" aria-label="要点{{pi + 1}}理由" value="{{item.detail}}" maxlength="-1" />
           </view>
           <view class="field">
             <view class="field-l">适用条件</view>
-            <input class="input" data-i="{{pi}}" bindinput="onPointApplies" value="{{item.appliesTo}}" placeholder="在什么情况下成立" />
+            <input class="input" data-i="{{pi}}" bindinput="onPointApplies" aria-label="要点{{pi + 1}}适用条件" value="{{item.appliesTo}}" placeholder="在什么情况下成立" />
           </view>
         </view>
 
@@ -145,7 +164,7 @@
           <view class="field">
             <view class="field-l">类型</view>
             <view class="fb-choices">
-              <text
+              <button
                 wx:for="{{sourceTypes}}"
                 wx:for-item="ty"
                 wx:key="key"
@@ -154,7 +173,10 @@
                 data-k="{{ty.key}}"
                 bindtap="setSrcType"
                 hover-class="tap"
-              >{{ty.name}}</text>
+                aria-role="radio"
+                aria-checked="{{item.sourceType === ty.key}}"
+                aria-label="依据{{si + 1}}类型：{{ty.name}}"
+              >{{ty.name}}</button>
             </view>
           </view>
           <view class="field">
@@ -176,7 +198,7 @@
           <view class="field">
             <view class="field-l">支撑哪几条要点</view>
             <view class="fb-choices">
-              <text
+              <button
                 wx:for="{{item.linkChoices}}"
                 wx:for-item="lc"
                 wx:key="id"
@@ -185,7 +207,10 @@
                 data-pid="{{lc.id}}"
                 bindtap="toggleSrcPoint"
                 hover-class="tap"
-              >{{lc.label}}</text>
+                aria-role="checkbox"
+                aria-checked="{{lc.on}}"
+                aria-label="依据{{si + 1}}支撑：{{lc.label}}"
+              >{{lc.label}}</button>
             </view>
           </view>
         </view>

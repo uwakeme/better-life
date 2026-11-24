@@ -14,6 +14,10 @@ Page({
     error: '',
     cards: [],
     total: 0,
+    page: 1,
+    size: 10,
+    hasMore: false,
+    loadingMore: false,
     categories: [],
     catId: 0,
     sort: 'added',
@@ -23,8 +27,15 @@ Page({
 
   onLoad: function () {
     this.setData({ isAdmin: role.isAdmin() });
-    this.loadCats();
     this.load();
+  },
+
+  onShow: function () {
+    this.setData({ isAdmin: role.isAdmin() });
+  },
+
+  onReachBottom: function () {
+    this.loadList(true);
   },
 
   loadCats: function () {
@@ -46,35 +57,66 @@ Page({
   },
 
   load: function () {
+    return Promise.all([this.loadCats(), this.loadList(false)]);
+  },
+
+  loadList: function (append) {
     var self = this;
-    this.setData({ loading: true, error: '' });
+    if (append && (this.data.loading || this.data.loadingMore || !this.data.hasMore)) {
+      return Promise.resolve();
+    }
+    var page = append ? this.data.page + 1 : 1;
+    var seq = (this.listSeq || 0) + 1;
+    this.listSeq = seq;
+    this.setData(append ? {
+      loadingMore: true, error: ''
+    } : {
+      loading: true, loadingMore: false, error: '', page: 1, cards: [], total: 0, hasMore: false, empty: false
+    });
     return api.listFavorites({
       categoryId: this.data.catId || undefined,
-      sort: this.data.sort
+      sort: this.data.sort,
+      page: page,
+      size: this.data.size
     }).then(function (res) {
+      if (seq !== self.listSeq) return;
       var items = res.items || [];
-      var cards = [];
-      for (var i = 0; i < items.length; i++) cards.push(view.cardView(items[i]));
+      var fresh = [];
+      for (var i = 0; i < items.length; i++) fresh.push(view.cardView(items[i]));
+      var cards = append ? self.data.cards.concat(fresh) : fresh;
+      var total = typeof res.total === 'number' ? res.total : 0;
+      var currentPage = Number(res.page) || page;
+      var size = Number(res.size) || self.data.size;
       self.setData({
         loading: false,
+        loadingMore: false,
         cards: cards,
-        total: res.total || items.length,
-        empty: !items.length
+        total: total,
+        page: currentPage,
+        size: size,
+        hasMore: typeof res.hasMore === 'boolean' ? res.hasMore : (currentPage * size < total),
+        empty: !cards.length,
+        source: res.source || 'demo'
       });
     }).catch(function (err) {
-      self.setData({ loading: false, error: (err && err.message) || '网络不太顺畅，没连上' });
+      if (seq !== self.listSeq) return;
+      self.setData({
+        loading: false,
+        loadingMore: false,
+        error: (err && err.message) || '网络不太顺畅，没连上'
+      });
     });
   },
 
   setCat: function (e) {
     var id = Number(e.currentTarget.dataset.id || 0);
     this.setData({ catId: this.data.catId === id ? 0 : id });
-    this.load();
+    this.loadList(false);
   },
 
   setSort: function (e) {
     this.setData({ sort: e.currentTarget.dataset.k });
-    this.load();
+    this.loadList(false);
   },
 
   openExp: function (e) {
@@ -86,6 +128,6 @@ Page({
   },
 
   retry: function () {
-    this.load();
+    this.loadList(!!this.data.cards.length);
   }
 });

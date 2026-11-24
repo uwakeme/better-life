@@ -84,6 +84,7 @@ async function main () {
   } else {
     const out = await expService.reindexAll();
     check('索引重建成功', out.documents > 0, '文档数 ' + out.documents);
+    check('索引重建没有失败项', out.failed === 0, '失败 ' + out.failed);
     const missing = [];
     for (const e of published.rows) {
       const idx = await db.query(
@@ -96,6 +97,17 @@ async function main () {
       }
     }
     check('已发布经验都有索引且模型一致', missing.length === 0, missing.slice(0, 8).join('；'));
+    const publishedIds = new Set(published.rows.map(function (e) { return String(e.id); }));
+    const pointDocs = await db.query("SELECT ref_id FROM search_documents WHERE doc_type = 'point'");
+    const indexedPointIds = new Set(pointDocs.rows.map(function (p) { return String(p.ref_id); }));
+    const missingPoints = points.rows.filter(function (p) {
+      return publishedIds.has(String(p.experience_id)) && !indexedPointIds.has(String(p.id));
+    }).map(function (p) { return p.id; });
+    const orphanPoints = points.rows.filter(function (p) {
+      return !publishedIds.has(String(p.experience_id)) && indexedPointIds.has(String(p.id));
+    }).map(function (p) { return p.id; });
+    check('已发布经验的每个要点都有索引', missingPoints.length === 0, missingPoints.join(', '));
+    check('未发布经验的要点没有残留索引', orphanPoints.length === 0, orphanPoints.join(', '));
   }
 
   /* ---------- 5 ---------- */
@@ -180,6 +192,36 @@ async function main () {
     if (Number(e.not_useful_count) !== bad) bad12.push(e.id + ' not_useful_count ' + e.not_useful_count + ' ≠ ' + bad);
   }
   check('两个投票计数都等于 votes 表实际行数', bad12.length === 0, bad12.join('；'));
+
+  /* ---------- 收藏与反馈冗余计数 ---------- */
+  group('收藏与反馈计数');
+  const favorites = await db.query('SELECT experience_id FROM favorites');
+  const processedFeedback = await db.query(
+    "SELECT target_type, target_id FROM feedbacks WHERE status <> 'pending'"
+  );
+  const favoriteCounts = new Map();
+  const feedbackCounts = new Map();
+  for (const row of favorites.rows) {
+    const id = String(row.experience_id);
+    favoriteCounts.set(id, (favoriteCounts.get(id) || 0) + 1);
+  }
+  for (const row of processedFeedback.rows) {
+    if (row.target_type !== 'experience') continue;
+    const id = String(row.target_id);
+    feedbackCounts.set(id, (feedbackCounts.get(id) || 0) + 1);
+  }
+  const storedCounts = await db.query('SELECT id, favorite_count, feedback_count FROM experiences');
+  const badCounts = storedCounts.rows.filter(function (e) {
+    return Number(e.favorite_count) !== (favoriteCounts.get(String(e.id)) || 0) ||
+      Number(e.feedback_count) !== (feedbackCounts.get(String(e.id)) || 0);
+  }).map(function (e) {
+    return e.id + '（收藏 ' + e.favorite_count + '/' + (favoriteCounts.get(String(e.id)) || 0) +
+      '，反馈 ' + e.feedback_count + '/' + (feedbackCounts.get(String(e.id)) || 0) + '）';
+  });
+  check('收藏计数等于 favorites 实际行数，反馈计数只统计已处理项', badCounts.length === 0, badCounts.join('；'));
+  check('种子里的已处理经验反馈确实存在', processedFeedback.rows.some(function (f) {
+    return f.target_type === 'experience';
+  }));
 
   /* ---------- 13 ---------- */
   group('断言 13 · 同领域标签不重名');

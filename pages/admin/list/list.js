@@ -10,6 +10,7 @@
  */
 var api = require('../../../utils/api');
 var role = require('../../../utils/role');
+var format = require('../../../utils/format');
 
 var STATUS_LABEL = {
   published: '已发布',
@@ -24,9 +25,23 @@ Page({
     error: '',
     stats: null,
     items: [],
+    total: 0,
+    page: 1,
+    size: 10,
+    hasMore: false,
+    loadingMore: false,
     categories: [],
     q: '',
     cat: 0,
+    /* 状态筛选 —— 服务端 listForAdmin 本来就支持 status，
+       之前界面上没有入口，管理员只能自己一条条翻。 */
+    status: '',
+    statusOptions: [
+      { id: '', name: '全部状态' },
+      { id: 'published', name: '已发布' },
+      { id: 'draft', name: '草稿' },
+      { id: 'archived', name: '已归档' }
+    ],
     goHome: false
   },
 
@@ -38,6 +53,14 @@ Page({
     this.setData({ allowed: true });
     this.loadCats();
     this.load();
+  },
+
+  onShow: function () {
+    if (this.data.allowed) this.setData({ allowed: role.canManage() });
+  },
+
+  onReachBottom: function () {
+    this.nextPage();
   },
 
   loadCats: function () {
@@ -53,13 +76,38 @@ Page({
   },
 
   load: function () {
+    return Promise.all([this.loadList(false), this.loadStats()]);
+  },
+
+  loadStats: function () {
     var self = this;
-    this.setData({ loading: true, error: '' });
-    return Promise.all([
-      api.listAdminExperiences({ q: this.data.q, cat: this.data.cat }),
-      api.getStats()
-    ]).then(function (res) {
-      var list = res[0].items || [];
+    return api.getStats().then(function (stats) {
+      self.setData({ stats: stats });
+    }).catch(function () { /* 指标失败不遮挡可重试的经验列表 */ });
+  },
+
+  loadList: function (append, targetPage) {
+    var self = this;
+    if (append && (this.data.loading || this.data.loadingMore || !this.data.hasMore)) {
+      return Promise.resolve();
+    }
+    var page = targetPage || (append ? this.data.page + 1 : 1);
+    var seq = (this.listSeq || 0) + 1;
+    this.listSeq = seq;
+    this.setData(append ? {
+      loadingMore: true, error: ''
+    } : {
+      loading: true, loadingMore: false, error: '', page: page, items: [], total: 0, hasMore: false
+    });
+    return api.listAdminExperiences({
+      q: this.data.q,
+      cat: this.data.cat,
+      status: this.data.status,
+      page: page,
+      size: this.data.size
+    }).then(function (res) {
+      if (seq !== self.listSeq) return;
+      var list = res.items || [];
       var items = [];
       for (var i = 0; i < list.length; i++) {
         var e = list[i];
@@ -70,16 +118,42 @@ Page({
           categoryName: e.categoryName,
           status: e.status,
           statusLabel: STATUS_LABEL[e.status] || e.status,
-          updatedAt: e.updatedAt,
-          pointCount: (e.points || []).length,
-          sourceCount: (e.sources || []).length,
+          updatedAt: format.date(e.updatedAt) || '',
+          pointCount: Number(e.pointCount) || 0,
+          sourceCount: Number(e.sourceCount) || 0,
           tagLine: (e.tagNames || []).join(' · ')
         });
       }
-      self.setData({ loading: false, items: items, stats: res[1] });
+      var total = typeof res.total === 'number' ? res.total : 0;
+      var currentPage = Number(res.page) || page;
+      var size = Number(res.size) || self.data.size;
+      self.setData({
+        loading: false,
+        loadingMore: false,
+        items: append ? self.data.items.concat(items) : items,
+        total: total,
+        page: currentPage,
+        size: size,
+        hasMore: typeof res.hasMore === 'boolean' ? res.hasMore : (currentPage * size < total)
+      });
     }).catch(function (err) {
-      self.setData({ loading: false, error: (err && err.message) || '网络不太顺畅，没连上' });
+      if (seq !== self.listSeq) return;
+      self.setData({
+        loading: false,
+        loadingMore: false,
+        error: (err && err.message) || '网络不太顺畅，没连上'
+      });
     });
+  },
+
+  prevPage: function () {
+    if (this.data.page > 1 && !this.data.loading && !this.data.loadingMore) {
+      this.loadList(false, this.data.page - 1);
+    }
+  },
+
+  nextPage: function () {
+    this.loadList(true);
   },
 
   onQ: function (e) {
@@ -87,12 +161,17 @@ Page({
   },
 
   search: function () {
-    this.load();
+    this.loadList(false);
   },
 
   setCat: function (e) {
     this.setData({ cat: Number(e.currentTarget.dataset.id || 0) });
-    this.load();
+    this.loadList(false);
+  },
+
+  setStatus: function (e) {
+    this.setData({ status: String(e.currentTarget.dataset.id || '') });
+    this.loadList(false);
   },
 
   newExp: function () {
@@ -116,6 +195,33 @@ Page({
     });
   },
 
+  /**
+   * 删除一条经验
+   *
+   * ⚠️ 不可撤销 —— 经验、要点、依据、检索索引会一起消失。
+   *    所以必须先弹确认，并把「会一起消失」写清楚，不能只问一句「确定吗」。
+   */
+  remove: function (e) {
+    var self = this;
+    var id = Number(e.currentTarget.dataset.id);
+    var title = e.currentTarget.dataset.title || '这条经验';
+    wx.showModal({
+      title: '删除经验',
+      content: '确定删除「' + title + '」？这条经验连同它的要点、依据与检索索引都会一并消失，无法恢复。',
+      confirmText: '删除',
+      cancelText: '取消',
+      success: function (res) {
+        if (!res.confirm) return;
+        api.deleteExperience(id).then(function () {
+          wx.showToast({ title: '已删除', icon: 'none' });
+          self.load();
+        }).catch(function (err) {
+          wx.showToast({ title: (err && err.message) || '删除失败', icon: 'none' });
+        });
+      }
+    });
+  },
+
   goInbox: function () {
     wx.navigateTo({ url: '/pages/admin/feedback/feedback' });
   },
@@ -129,6 +235,7 @@ Page({
   },
 
   retry: function () {
-    this.load();
+    if (this.data.items.length) this.loadList(true);
+    else this.loadList(false, this.data.page || 1);
   }
 });

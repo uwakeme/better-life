@@ -35,22 +35,33 @@ async function tagNamesFor (ids) {
   return out;
 }
 
-/** 这条经验挂了哪些标签（id 列表） */
-async function listTagIds (experienceId) {
+/** 批量标签 id，管理列表避免逐条查询。 */
+async function tagIdsFor (ids) {
+  const list = (ids || []).map(Number).filter(function (id) { return id > 0; });
+  const out = {};
+  if (!list.length) return out;
   const res = await db.query(
-    'SELECT tag_id FROM experience_tags WHERE experience_id = $1 ORDER BY tag_id',
-    [Number(experienceId)]
+    'SELECT experience_id, tag_id FROM experience_tags WHERE experience_id IN (' +
+    list.join(',') + ') ORDER BY experience_id, tag_id'
   );
-  const out = [];
-  for (const row of res.rows) out.push(Number(row.tag_id));
+  for (const row of res.rows) {
+    const key = String(row.experience_id);
+    if (!out[key]) out[key] = [];
+    out[key].push(Number(row.tag_id));
+  }
   return out;
+}
+
+async function listTagIds (experienceId) {
+  const map = await tagIdsFor([experienceId]);
+  return map[String(experienceId)] || [];
 }
 
 const EXP_COLUMNS =
   'e.id, e.slug, e.title, e.summary, e.body, e.category_id, e.search_keywords, ' +
   'e.cover_url, e.status, e.confidence, e.reviewed_at, e.next_review_at, ' +
   'e.view_count, e.favorite_count, e.useful_count, e.not_useful_count, e.feedback_count, ' +
-  'e.created_at, e.updated_at, c.name AS category_name';
+  'e.created_at, e.updated_at, c.name AS category_name, c.slug AS category_slug';
 
 /** 经验列表（读者侧：只出已发布的） */
 async function listPublished (opts) {
@@ -72,11 +83,20 @@ async function listPublished (opts) {
     params.push(Number(o.tagId));
     p++;
   }
+  /* stance 是要点级字段：这条经验至少有一条该立场的要点（§8.1） */
+  if (o.stance) {
+    where.push('e.id IN (SELECT experience_id FROM points WHERE stance = $' + p + ')');
+    params.push(String(o.stance));
+    p++;
+  }
 
+  const order = o.sort === 'fav'
+    ? 'e.favorite_count DESC, e.updated_at DESC, e.id DESC'
+    : 'e.updated_at DESC, e.id DESC';
   const sql =
     'SELECT ' + EXP_COLUMNS + ' FROM experiences e JOIN categories c ON c.id = e.category_id ' +
     'WHERE ' + where.join(' AND ') +
-    ' ORDER BY e.updated_at DESC, e.id DESC LIMIT ' + size + ' OFFSET ' + offset;
+    ' ORDER BY ' + order + ' LIMIT ' + size + ' OFFSET ' + offset;
 
   const countSql = 'SELECT count(*) AS n FROM experiences e WHERE ' + where.join(' AND ');
   const rows = await db.query(sql, params);
@@ -84,11 +104,44 @@ async function listPublished (opts) {
 
   const items = toCamelList(rows.rows, { numeric: true });
   const nameMap = await tagNamesFor(items.map(function (i) { return i.id; }));
+  const stanceMap = await stanceCountsFor(items.map(function (item) { return item.id; }));
   for (const item of items) {
     item.tagNames = nameMap[String(item.id)] || [];
     item.keywords = item.searchKeywords || [];
+    item.stanceCounts = stanceMap[String(item.id)] || { good: 0, bad: 0, neutral: 0 };
   }
   return { items: items, page: page, size: size, total: Number(totalRow ? totalRow.n : 0) };
+}
+
+async function stanceCountsFor (ids) {
+  const list = (ids || []).map(Number).filter(function (id) { return id > 0; });
+  const out = {};
+  if (!list.length) return out;
+  const res = await db.query(
+    'SELECT experience_id, stance, count(*) AS n FROM points WHERE experience_id IN (' +
+    list.join(',') + ') GROUP BY experience_id, stance'
+  );
+  for (const row of res.rows) {
+    const key = String(row.experience_id);
+    if (!out[key]) out[key] = { good: 0, bad: 0, neutral: 0 };
+    if (Object.prototype.hasOwnProperty.call(out[key], row.stance)) {
+      out[key][row.stance] = Number(row.n);
+    }
+  }
+  return out;
+}
+
+async function relationCountsFor (ids) {
+  const list = (ids || []).map(Number).filter(function (id) { return id > 0; });
+  const out = {};
+  for (const id of list) out[String(id)] = { points: 0, sources: 0 };
+  if (!list.length) return out;
+  const inList = '(' + list.join(',') + ')';
+  const points = await db.query('SELECT experience_id, count(*) AS n FROM points WHERE experience_id IN ' + inList + ' GROUP BY experience_id');
+  const sources = await db.query('SELECT experience_id, count(*) AS n FROM sources WHERE experience_id IN ' + inList + ' GROUP BY experience_id');
+  for (const row of points.rows) out[String(row.experience_id)].points = Number(row.n);
+  for (const row of sources.rows) out[String(row.experience_id)].sources = Number(row.n);
+  return out;
 }
 
 /** 管理端列表：含草稿，支持关键词与领域筛选 */
@@ -112,7 +165,12 @@ async function listForAdmin (opts) {
     p++;
   }
   if (o.q) {
-    where.push('(LOWER(e.title) LIKE $' + p + ' OR LOWER(e.summary) LIKE $' + p + ' OR LOWER(e.body) LIKE $' + p + ')');
+    /* 搜索范围：标题 / 结论 / 正文 / 标签名 ——
+       管理端输入框的提示写的是「搜标题、结论或标签」，那标签就必须真能搜到。 */
+    where.push('(LOWER(e.title) LIKE $' + p + ' OR LOWER(e.summary) LIKE $' + p +
+      ' OR LOWER(e.body) LIKE $' + p +
+      ' OR e.id IN (SELECT et.experience_id FROM experience_tags et JOIN tags t ON t.id = et.tag_id' +
+      ' WHERE LOWER(t.name) LIKE $' + p + '))');
     params.push('%' + String(o.q).toLowerCase() + '%');
     p++;
   }
@@ -123,31 +181,56 @@ async function listForAdmin (opts) {
     ' ORDER BY e.updated_at DESC, e.id DESC LIMIT ' + size + ' OFFSET ' + offset;
 
   const rows = await db.query(sql, params);
+  const totalRow = await db.queryOne('SELECT count(*) AS n FROM experiences e WHERE ' + where.join(' AND '), params);
   const items = toCamelList(rows.rows, { numeric: true });
-  const nameMap = await tagNamesFor(items.map(function (i) { return i.id; }));
+  const ids = items.map(function (item) { return item.id; });
+  const nameMap = await tagNamesFor(ids);
+  const tagMap = await tagIdsFor(ids);
+  const relationMap = await relationCountsFor(ids);
   for (const item of items) {
     item.tagNames = nameMap[String(item.id)] || [];
+    item.tagIds = tagMap[String(item.id)] || [];
     item.keywords = item.searchKeywords || [];
+    item.pointCount = relationMap[String(item.id)].points;
+    item.sourceCount = relationMap[String(item.id)].sources;
   }
-  return { items: items, page: page, size: size };
+  return { items: items, page: page, size: size, total: Number(totalRow ? totalRow.n : 0) };
 }
 
-/** 单条经验（含要点与依据） */
-async function getById (id) {
-  const row = await db.queryOne(
-    'SELECT ' + EXP_COLUMNS + ' FROM experiences e JOIN categories c ON c.id = e.category_id WHERE e.id = $1',
-    [Number(id)]
+/**
+ * 单条经验（含要点与依据）
+ * @param {number} id
+ * @param {object} opts { publishedOnly: true 时只取已发布的 }
+ */
+async function getByIds (ids, opts) {
+  const list = (ids || []).map(Number).filter(function (id) { return id > 0; });
+  if (!list.length) return [];
+  const params = list.slice();
+  let where = 'e.id IN (' + list.map(function (_, i) { return '$' + (i + 1); }).join(',') + ')';
+  if (opts && opts.publishedOnly) where += " AND e.status = 'published'";
+  const rows = await db.query(
+    'SELECT ' + EXP_COLUMNS + ' FROM experiences e JOIN categories c ON c.id = e.category_id WHERE ' + where,
+    params
   );
-  if (!row) return null;
-  const exp = toCamel(row, { numeric: true });
-  const nameMap = await tagNamesFor([exp.id]);
-  exp.tagNames = nameMap[String(exp.id)] || [];
-  exp.points = await listPoints(exp.id);
-  exp.sources = await listSources(exp.id);
-  exp.tagIds = await listTagIds(exp.id);
-  /* 客户端管理端用 keywords 这个名字（数据库列是 search_keywords） */
-  exp.keywords = exp.searchKeywords || [];
-  return exp;
+  const items = toCamelList(rows.rows, { numeric: true });
+  const pointMap = await listPointsByExperience(list);
+  const sourceMap = await listSourcesByExperience(list);
+  const nameMap = await tagNamesFor(list);
+  const tagMap = await tagIdsFor(list);
+  for (const exp of items) {
+    const key = String(exp.id);
+    exp.tagNames = nameMap[key] || [];
+    exp.points = pointMap[key] || [];
+    exp.sources = sourceMap[key] || [];
+    exp.tagIds = tagMap[key] || [];
+    exp.keywords = exp.searchKeywords || [];
+  }
+  return items;
+}
+
+async function getById (id, opts) {
+  const list = await getByIds([id], opts);
+  return list.length ? list[0] : null;
 }
 
 /**
@@ -180,6 +263,23 @@ async function listPoints (experienceId) {
     [Number(experienceId)]
   );
   return toCamelList(res.rows, { numeric: true });
+}
+
+async function listSourcesByExperience (ids) {
+  const list = (ids || []).map(Number).filter(function (id) { return id > 0; });
+  const out = {};
+  if (!list.length) return out;
+  const res = await db.query(
+    'SELECT id, experience_id, title, url, source_type, platform, author, published_at, note, ' +
+    'point_ids, sort_order FROM sources WHERE experience_id IN (' + list.join(',') +
+    ') ORDER BY experience_id, sort_order, id'
+  );
+  for (const row of toCamelList(res.rows, { numeric: true })) {
+    const key = String(row.experienceId);
+    if (!out[key]) out[key] = [];
+    out[key].push(row);
+  }
+  return out;
 }
 
 /** 依据列表 */
@@ -225,7 +325,7 @@ async function save (exp, client) {
   const status = exp.status || 'draft';
   const confidence = exp.confidence || 'normal';
   const reviewedAt = exp.reviewedAt || new Date().toISOString().slice(0, 10);
-  const nextReviewAt = exp.nextReviewAt || null;
+  const nextReviewAt = exp.nextReviewAt === undefined ? null : exp.nextReviewAt;
 
   if (isNew) {
     const ins = await db.buildInsert({
@@ -299,9 +399,20 @@ async function save (exp, client) {
     const s = sources[i];
     const raw = Array.isArray(s.pointIds) ? s.pointIds : [];
     const mapped = [];
+    /* ⚠️ 悬空的 pointId 之前是静默丢弃的 ——
+       依据引用一个不存在的要点，落库后 point_ids 变成空数组，
+       而发布护栏只校验入参，看不到映射结果，所以照样能发布。
+       这里记下来，由服务层在映射之后拒绝发布。 */
+    let dangling = 0;
     for (const pid of raw) {
       const key = String(pid);
       if (pointIdMap[key] !== undefined) mapped.push(pointIdMap[key]);
+      else dangling++;
+    }
+    if (dangling > 0) {
+      const e = new Error('存在未关联要点的依据，请先为其指定所支撑的要点。');
+      e.code = 'VALIDATION';
+      throw e;
     }
     const ins = await db.buildInsert({
       table: 'sources',
@@ -377,20 +488,45 @@ async function listRelated (id, limit) {
   return items.concat(more).slice(0, max);
 }
 
-/** 浏览计数 +1 */
-async function incrView (id) {
+/**
+ * 浏览计数 +1
+ *
+ * ⚠️ 之前每次请求详情都 +1，没有去重 ——
+ *    反复刷新同一页就能把浏览数刷上去。这个数字是内容热度的参考，
+ *    刷出来的数字没有意义。
+ *    现在按「同一条内容 + 同一 IP + 同一小时」去重：
+ *    重复刷新不再增加，跨小时再来看才算新的一次浏览。
+ */
+const VIEW_DEDUP = new Map();
+
+async function incrView (id, ip) {
+  const key = String(id) + '|' + String(ip || '');
+  const hour = Math.floor(Date.now() / 3600000);
+  const last = VIEW_DEDUP.get(key);
+  if (last === hour) return;
+  VIEW_DEDUP.set(key, hour);
+  /* 桶别无限涨 —— 顺手清掉两小时前的 */
+  if (VIEW_DEDUP.size > 5000) {
+    for (const [k, h] of VIEW_DEDUP) {
+      if (hour - h > 1) VIEW_DEDUP.delete(k);
+    }
+  }
   await db.query('UPDATE experiences SET view_count = view_count + 1 WHERE id = $1', [Number(id)]);
 }
 
 module.exports = {
   tagNamesFor: tagNamesFor,
   listTagIds: listTagIds,
+  tagIdsFor: tagIdsFor,
+  stanceCountsFor: stanceCountsFor,
   listPublished: listPublished,
   listForAdmin: listForAdmin,
   getById: getById,
+  getByIds: getByIds,
   listPoints: listPoints,
   listPointsByExperience: listPointsByExperience,
   listSources: listSources,
+  listSourcesByExperience: listSourcesByExperience,
   sourceCoversPoint: sourceCoversPoint,
   save: save,
   setStatus: setStatus,

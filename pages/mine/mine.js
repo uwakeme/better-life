@@ -32,7 +32,9 @@ Page({
       scenes: api.sceneList(),
       scene: api.currentScene()
     });
-    this.load();
+    /* ⚠️ 不在这里 load() —— onLoad 与 onShow 都会触发，
+       两次 load 等于把 /api/me 请求了两遍（实测确实 2 次）。
+       onShow 会紧跟着触发，那里统一负责加载。 */
   },
 
   onShow: function () {
@@ -54,6 +56,7 @@ Page({
       var m = res[0].metrics || {};
       self.setData({
         loading: false,
+        isAdmin: role.isAdmin(),
         favorites: m.favorites || 0,
         myFeedbacks: m.myFeedbacks || 0,
         total: res[1].total || 0

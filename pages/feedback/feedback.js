@@ -14,6 +14,18 @@ var format = require('../../utils/format');
 var config = require('../../config/index');
 
 var KINDS = ['correction', 'supplement', 'question', 'suggestion'];
+var chooserPending = false;
+var pendingUploads = 0;
+var uploadTaskSeq = 0;
+
+function safeTitle (value) {
+  var raw = String(value == null ? '' : value).slice(0, 120);
+  try {
+    return decodeURIComponent(raw).slice(0, 120);
+  } catch (e) {
+    return raw;
+  }
+}
 
 Page({
   data: {
@@ -27,6 +39,8 @@ Page({
     images: [],
     maxImages: config.feedbackImageMax,
     submitting: false,
+    pending: false,
+    uploading: false,
     hint: ''
   },
 
@@ -40,7 +54,7 @@ Page({
       isAdmin: role.isAdmin(),
       targetType: q.targetType === 'experience' ? 'experience' : 'project',
       targetId: Number(q.targetId || 0),
-      targetTitle: q.title ? decodeURIComponent(q.title) : '',
+      targetTitle: safeTitle(q.title),
       kinds: kinds
     });
   },
@@ -55,6 +69,7 @@ Page({
 
   chooseImage: function () {
     var self = this;
+    if (chooserPending || pendingUploads || this.data.submitting) return;
     var remain = this.data.maxImages - this.data.images.length;
     if (remain <= 0) {
       wx.showToast({ title: '最多只能附 ' + this.data.maxImages + ' 张图片', icon: 'none' });
@@ -64,47 +79,93 @@ Page({
       wx.showToast({ title: '当前环境不支持选图', icon: 'none' });
       return;
     }
-    wx.chooseMedia({
-      count: remain,
-      mediaType: ['image'],
-      sizeType: ['compressed'],
-      success: function (res) {
-        var files = res.tempFiles || [];
-        var paths = [];
-        for (var i = 0; i < files.length; i++) paths.push(files[i].tempFilePath);
-        self.uploadAll(paths);
-      },
-      fail: function () { /* 用户取消，不提示 */ }
-    });
+    chooserPending = true;
+    this.setData({ pending: true });
+    var finishChoose = function () {
+      chooserPending = false;
+      self.setData({ pending: false });
+    };
+    try {
+      wx.chooseMedia({
+        count: remain,
+        mediaType: ['image'],
+        sizeType: ['compressed'],
+        success: function (res) {
+          finishChoose();
+          var files = res.tempFiles || [];
+          var paths = [];
+          for (var i = 0; i < files.length && paths.length < remain; i++) {
+            if (files[i] && files[i].tempFilePath) paths.push(files[i].tempFilePath);
+          }
+          self.uploadAll(paths);
+        },
+        fail: finishChoose
+      });
+    } catch (e) {
+      finishChoose();
+    }
   },
 
   uploadAll: function (paths) {
     var self = this;
+    var list = (paths || []).slice(0, Math.max(0, this.data.maxImages - this.data.images.length));
+    if (!list.length || pendingUploads || this.data.submitting) return;
+    var task = ++uploadTaskSeq;
     var done = 0;
-    for (var i = 0; i < paths.length; i++) {
-      (function (p) {
-        api.uploadImage(p).then(function (r) {
-          self.setData({ images: self.data.images.concat([r]) });
+    var failed = 0;
+    pendingUploads = list.length;
+    this.setData({ uploading: true, hint: '' });
+    for (var i = 0; i < list.length; i++) {
+      (function (filePath) {
+        var finish = function (err, result) {
+          if (task !== uploadTaskSeq) return;
           done++;
-          if (done === paths.length) wx.showToast({ title: '图片已附上', icon: 'none' });
-        }).catch(function () {
-          done++;
-          wx.showToast({ title: '有一张图没能上传成功', icon: 'none' });
+          pendingUploads--;
+          if (err) {
+            failed++;
+            self.setData({ hint: (err && err.message) || '有一张图没能上传成功' });
+          } else if (self.data.images.length < self.data.maxImages) {
+            self.setData({ images: self.data.images.concat([result]) });
+          }
+          if (pendingUploads === 0) {
+            self.setData({ uploading: false });
+            if (!failed) wx.showToast({ title: '图片已附上', icon: 'none' });
+          }
+        };
+        api.uploadImage(filePath).then(function (result) {
+          finish(null, result);
+        }, function (err) {
+          finish(err);
         });
-      })(paths[i]);
+      })(list[i]);
     }
   },
 
   removeImage: function (e) {
+    if (chooserPending || pendingUploads || this.data.uploading || this.data.submitting) return;
     var i = Number(e.currentTarget.dataset.i || 0);
     var list = this.data.images.slice();
     list.splice(i, 1);
     this.setData({ images: list });
   },
 
+  onUnload: function () {
+    uploadTaskSeq++;
+    pendingUploads = 0;
+    chooserPending = false;
+  },
+
   submit: function () {
     var self = this;
     if (this.data.submitting) return;
+    if (chooserPending || pendingUploads || this.data.uploading || this.data.pending) {
+      this.setData({ hint: '图片还在上传，稍等一下' });
+      return;
+    }
+    if (this.data.images.length > this.data.maxImages) {
+      this.setData({ hint: '最多只能附 ' + this.data.maxImages + ' 张图片' });
+      return;
+    }
     if (!this.data.kind) {
       this.setData({ hint: '请先选择反馈类型' });
       return;
@@ -124,9 +185,8 @@ Page({
     return api.submitFeedback(payload).then(function () {
       self.setData({ submitting: false });
       wx.showToast({ title: '已提交', icon: 'none' });
-      setTimeout(function () {
-        wx.navigateBack({ delta: 1 });
-      }, 700);
+      /* 不延迟返回 —— 延迟期间用户自己退出会多退一层页面。 */
+      wx.navigateBack({ delta: 1, fail: function () { wx.switchTab({ url: '/pages/home/home' }); } });
     }).catch(function (err) {
       self.setData({ submitting: false });
       var msg = (err && err.message) || '提交失败，请稍后重试';

@@ -15,6 +15,7 @@
  * 远端 provider 缺 key 或调用失败时抛错，由调用方降级，绝不假装成功。
  */
 const config = require('../config');
+const { fetchWithTimeout } = require('../lib/http');
 
 /* ---------- local：确定性哈希 embedding ---------- */
 
@@ -46,7 +47,7 @@ function hashEmbedding (text, dim) {
 /* ---------- 远端 provider ---------- */
 
 async function callSiliconflow (texts) {
-  const res = await fetch(config.embedding.endpoint, {
+  const res = await fetchWithTimeout(config.embedding.endpoint, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
@@ -62,7 +63,7 @@ async function callSiliconflow (texts) {
 
 async function callMinimax (texts) {
   /* ⚠️ minimax 的请求体与 OpenAI 不兼容：{ model, texts, type }，响应 { vectors } */
-  const res = await fetch(config.embedding.endpoint, {
+  const res = await fetchWithTimeout(config.embedding.endpoint, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',

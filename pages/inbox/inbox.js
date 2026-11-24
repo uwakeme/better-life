@@ -40,7 +40,8 @@ Page({
           status: f.status,
           content: f.content || '',
           reply: f.reply || '',
-          createdAt: f.createdAt || '',
+          /* 日期统一成 YYYY-MM-DD —— 服务端可能带时间部分 */
+          createdAt: format.date(f.createdAt) || '',
           mediaStatus: f.mediaStatus || 'none',
           mediaLabel: format.MEDIA_STATUS_LABEL[f.mediaStatus] || '',
           targetType: f.targetType || 'project'

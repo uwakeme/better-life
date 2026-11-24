@@ -19,7 +19,7 @@
     </view>
     <view class="strip">
       <view class="strip-t">数据怎么用</view>
-      <view class="strip-n">本小程序会记录你的微信标识，用于登录与收藏，不会用于其他用途。收藏与搜索记录只保存在这台设备上，不上传、不参与任何统计。</view>
+      <view class="strip-n">收藏、投票与反馈会同步到服务端，用于对应账号的功能与内容管理。搜索时输入的关键词会上传到服务端用于检索；搜索历史只保存在这台设备，不上传、不参与统计。</view>
     </view>
     <view class="strip">
       <view class="strip-t">身体不适怎么办</view>

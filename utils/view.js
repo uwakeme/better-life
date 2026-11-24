@@ -29,20 +29,39 @@ var COLOR_HEX = {
  * 经验卡视图
  * 口径：整条经验不贴立场贴纸，只写「N 推荐 · M 避雷」的计数（设计文档 §2.3）。
  */
-function cardView (exp, hit) {
+function highlightParts (value, fallback) {
+  var text = String(fallback == null ? '' : fallback);
+  if (!Array.isArray(value)) return [{ text: text, on: false }];
+  var out = [];
+  for (var i = 0; i < value.length; i++) {
+    var part = value[i];
+    if (Array.isArray(part) && part.length >= 2 && part[0] != null) {
+      out.push({ text: String(part[0]), on: !!part[1] });
+    } else if (part && typeof part === 'object' && part.text != null) {
+      out.push({ text: String(part.text), on: !!part.on });
+    }
+  }
+  return out.length ? out : [{ text: text, on: false }];
+}
+
+function cardView (exp, hit, highlights) {
   if (!exp) {
-    return { id: 0, title: '', summary: '', color: 's-cream', colorHex: COLOR_HEX['s-cream'], stanceText: '', updated: '', categoryName: '', tags: [], hit: hit || '' };
+    return { id: 0, title: '', titleParts: [{ text: '', on: false }], summary: '', summaryParts: [{ text: '', on: false }], color: 's-cream', colorHex: COLOR_HEX['s-cream'], stanceText: '', updated: '', categoryName: '', tags: [], hit: hit || '' };
   }
   var id = Number(exp.id || 0);
   var color = id > 0 ? COLORS[(id - 1) % COLORS.length] : 's-cream';
   return {
     id: id,
     title: exp.title || '',
+    titleParts: highlightParts(highlights && highlights.title, exp.title),
     summary: exp.summary || '',
+    summaryParts: highlightParts(highlights && highlights.summary, exp.summary),
     color: color,
     colorHex: COLOR_HEX[color],
     stanceText: format.stanceText(exp),
-    updated: format.ago(exp.updatedAt),
+    /* 演示数据用固定基准日（否则相对时间每次打开都在变），
+       服务端数据用真实当前时间（写死会让「今天」永远是某一天）。 */
+    updated: format.ago(exp.updatedAt, exp.source === 'demo'),
     categoryName: exp.categoryName || '',
     tags: exp.tagNames || [],
     usefulCount: exp.usefulCount || 0,
@@ -84,7 +103,7 @@ function sourceView (source, badge, also) {
   var meta = [];
   if (s.platform) meta.push(s.platform);
   if (s.author) meta.push(s.author);
-  if (s.publishedAt) meta.push(s.publishedAt);
+  if (s.publishedAt) meta.push(format.date(s.publishedAt));
   return {
     id: s.id || 0,
     title: s.title || '',
@@ -153,6 +172,9 @@ function hitLabel (matchedOn) {
       if (m.indexOf(p.prefix) === 0) return p.label + m.slice(p.prefix.length);
     }
     if (m === 'title') return '命中标题';
+    /* 服务端在「只在结论里命中」时发的是裸 'summary'，
+       不是 'summary:' 前缀 —— 之前落不到任何标签，结果显示成「没有命中原因」。 */
+    if (m === 'summary') return '命中结论';
     if (m === 'semantic') return '语义相近';
   }
   return '';

@@ -61,6 +61,11 @@ function getToken () {
 /**
  * 静默登录：wx.login 拿 code → 交给 api.js 换 token。
  * 登录失败不抛错 —— 登录只是让收藏/投票/反馈可用，失败时页面走登录引导。
+ *
+ * ⚠️ 只有真的换到服务端 token 才写登录态。
+ *    之前 api.js 的 login 失败会回落到 local.login（假 token 'demo-token'），
+ *    那个假 token 被当登录态存下来，界面上看起来「已登录」，
+ *    但服务端一律 401 —— 现在假 token 一律不写入登录态。
  */
 function login () {
   return new Promise(function (resolve) {
@@ -74,12 +79,26 @@ function login () {
         var api = require('./api');
         api.login(res.code).then(function (data) {
           if (!data || !data.token) { resolve(null); return; }
+          /* source === 'demo' 说明这次没连上服务端，拿到的是演示态的假凭证 */
+          if (data.source === 'demo') { resolve(null); return; }
           resolve(setSession(data.token, data.user));
         }).catch(function () { resolve(null); });
       },
       fail: function () { resolve(null); }
     });
   });
+}
+
+/**
+ * 确保有登录态 —— 所有写操作走它。
+ * 没 token 就静默登录一次；有 token 直接用。
+ * @returns {Promise<object|null>} 当前用户，登录不了返回 null
+ */
+function ensureLogin () {
+  if (token) {
+    return Promise.resolve(user);
+  }
+  return login();
 }
 
 module.exports = {
@@ -89,5 +108,6 @@ module.exports = {
   setSession: setSession,
   clear: clear,
   getToken: getToken,
-  login: login
+  login: login,
+  ensureLogin: ensureLogin
 };

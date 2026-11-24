@@ -22,7 +22,10 @@ const CASES = [
   { query: '快递丢了怎么赔', expect: 11, why: '维权类经验' },
   { query: '怎么退掉健身房', expect: 12, why: '维权类经验' },
   { query: '空调滤网怎么洗', expect: 19, why: '住家类经验' },
-  { query: '医疗险', expect: 26, why: '钱财类经验' }
+  { query: '医疗险', expect: 26, why: '钱财类经验' },
+  { query: '型，再', expect: 1, first: false, why: '标点归一后仍能命中结论' },
+  { query: '成膜剂', expect: 1, first: false, why: '只出现在要点详情也能命中' },
+  { query: '洗护', expect: 1, first: false, why: '标签名称参与关键词匹配' }
 ];
 
 /** 泛词刷屏的上限：一条具体的查询最多回这么多条 */
@@ -38,8 +41,10 @@ async function main () {
     const ids = (r.items || []).map((x) => x.experience.id);
     check('「' + c.query + '」命中第 ' + c.expect + ' 条（' + c.why + '）',
       ids.indexOf(c.expect) >= 0, '实际命中 ' + JSON.stringify(ids));
-    check('「' + c.query + '」第一条就是期望的那条', ids[0] === c.expect,
-      '第一条是 ' + ids[0]);
+    if (c.first !== false) {
+      check('「' + c.query + '」第一条就是期望的那条', ids[0] === c.expect,
+        '第一条是 ' + ids[0]);
+    }
   }
 
   group('结果结构');
@@ -50,6 +55,14 @@ async function main () {
   check('每条结果都带命中原因', (r0.items || []).every(function (x) {
     return Array.isArray(x.matchedOn) && x.matchedOn.length > 0;
   }));
+  check('检索结果非空', r0.items.length > 0);
+  check('每条都带摘要高亮片段', r0.items.every(function (x) {
+    return Array.isArray(x.highlights && x.highlights.summary);
+  }));
+  const punctuated = await search.search({ query: '型，再' });
+  const plain = await search.search({ query: '型再' });
+  eq('带标点与去标点查询召回一致', punctuated.items.map(function (x) { return x.experience.id; }),
+    plain.items.map(function (x) { return x.experience.id; }));
   check('命中原因用结构化前缀', (r0.items || []).every(function (x) {
     return x.matchedOn.every(function (m) {
       return /^(point:|keyword:|tag:|summary:|title$|summary$|semantic$)/.test(String(m));
@@ -108,7 +121,9 @@ async function main () {
     return x.experience.categoryId === 2;
   }));
   const stance = await search.search({ query: '洗发水', stance: 'good' });
-  check('按立场筛选不报错且有结果', (stance.items || []).length >= 0, '命中 ' + (stance.items || []).length);
+  check('按立场筛选确实返回推荐内容', stance.items.length > 0 && stance.items.every(function (x) {
+    return x.experience.id > 0;
+  }), '命中 ' + stance.items.length);
 
   await db.close();
   const failed = report('检索自检');

@@ -43,7 +43,12 @@ function request (method, path, data, options) {
             reject({ code: err.code || 'SERVER', message: err.message || '服务返回异常' });
           }
         } else {
-          reject({ code: 'HTTP', message: '服务返回 ' + status, status: status });
+          /* ⚠️ 业务错误码必须从响应体里读出来。
+             之前这里一律 reject({ code: 'HTTP' })，把服务端的
+             UNAUTHORIZED / NOT_FOUND / RATE_LIMITED / CONTENT_REJECTED 全丢了，
+             上层分不清「没登录」和「服务坏了」，只能回落演示数据 ——
+             结果真后端上的写入全被演示数据冒充。 */
+          reject(parseError(res, status));
         }
       },
       fail: function (err) {
@@ -56,6 +61,31 @@ function request (method, path, data, options) {
       }
     });
   });
+}
+
+/**
+ * 从错误响应里取出真实的业务错误码
+ * 服务端的错误包固定是 { ok:false, error:{ code, message } }，
+ * 4xx 才是业务错误（401/403/404/422/429），5xx 才是服务端故障。
+ */
+function parseError (res, status) {
+  var body = res && res.data;
+  var err = (body && body.error) || {};
+  var code = err.code || '';
+  if (!code) {
+    /* 没有错误包 —— 按状态码归类，别一律当 HTTP 丢掉语义 */
+    if (status === 401) code = 'UNAUTHORIZED';
+    else if (status === 403) code = 'FORBIDDEN';
+    else if (status === 404) code = 'NOT_FOUND';
+    else if (status === 429) code = 'RATE_LIMITED';
+    else if (status >= 500) code = 'SERVER';
+    else code = 'HTTP';
+  }
+  return {
+    code: code,
+    message: err.message || ('服务返回 ' + status),
+    status: status
+  };
 }
 
 function get (path, query, options) {
@@ -86,48 +116,50 @@ function del (path, data, options) {
 }
 
 /**
+ * PATCH —— 管理端处理反馈走这个动词。
+ * ⚠️ 之前没写这个方法，api.js 里 cloud.patch(...) 直接是 undefined，
+ *    调用就抛 TypeError —— 服务端模式下「处理反馈」根本发不出去。
+ */
+function patch (path, data, options) {
+  return request('PATCH', path, data, options);
+}
+
+/**
  * 上传一个本地文件（反馈附图用）
- * 临时文件路径不能直接送内容安全审核 —— 审核接口只认 media_id，
- * 所以先传到自己服务器，由服务器换成 media_id（设计文档 §9.4）。
+ *
+ * 走 base64 的 JSON，而不是 wx.uploadFile 的 multipart：
+ *   - 服务端只要 express.json 就能收，不用额外装 multipart 解析器
+ *     （依赖刻意只留 express + pg，见设计文档 §5.4）；
+ *   - 送审要的是可下载的 url，服务端拿到字节后转给微信 uploadimg 换 url，
+ *     正好就是 mediaCheckAsync 要的 media_url（设计文档 §9.4）。
+ *
+ * 临时文件路径不能直接送审 —— 审核服务器下载不到本机路径。
  */
 function upload (filePath, options) {
+  var opt = options || {};
   return new Promise(function (resolve, reject) {
-    if (typeof wx === 'undefined' || wx === null || typeof wx.uploadFile !== 'function') {
+    if (typeof wx === 'undefined' || wx === null ||
+        typeof wx.getFileSystemManager !== 'function') {
       reject({ code: 'NETWORK', message: '当前环境不支持文件上传' });
       return;
     }
-    var opt = options || {};
-    var header = {};
-    var token = auth.getToken();
-    if (token) header.Authorization = 'Bearer ' + token;
-    wx.uploadFile({
-      url: config.apiBaseUrl + (opt.path || '/api/upload'),
+    var fs = wx.getFileSystemManager();
+    fs.readFile({
       filePath: filePath,
-      name: opt.name || 'file',
-      header: header,
-      timeout: opt.timeout || config.requestTimeout,
+      encoding: 'base64',
       success: function (res) {
-        var status = res.statusCode;
-        if (status >= 200 && status < 300) {
-          var body = {};
-          try { body = JSON.parse(res.data || '{}'); } catch (e) { body = {}; }
-          if (body.ok) {
-            resolve(body.data);
-          } else {
-            var err = body.error || {};
-            reject({ code: err.code || 'SERVER', message: err.message || '服务返回异常' });
-          }
-        } else {
-          reject({ code: 'HTTP', message: '服务返回 ' + status, status: status });
+        var data = (res && res.data) || '';
+        if (!data) {
+          reject({ code: 'VALIDATION', message: '图片读取失败，请重新选择' });
+          return;
         }
+        request('POST', opt.path || '/api/upload', {
+          data: data,
+          filename: opt.name || filePath.split('/').pop() || 'image.png'
+        }, opt).then(resolve, reject);
       },
-      fail: function (err) {
-        var msg = (err && err.errMsg) || '';
-        if (msg.indexOf('timeout') >= 0) {
-          reject({ code: 'TIMEOUT', message: '上传超时，请稍后重试' });
-        } else {
-          reject({ code: 'NETWORK', message: '图片没能上传成功' });
-        }
+      fail: function () {
+        reject({ code: 'VALIDATION', message: '图片读取失败，请重新选择' });
       }
     });
   });
@@ -139,5 +171,6 @@ module.exports = {
   post: post,
   put: put,
   del: del,
+  patch: patch,
   upload: upload
 };

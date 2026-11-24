@@ -8,19 +8,22 @@
 var config = require('../config/index');
 var storage = require('./storage');
 
-/** 当前角色：管理员 / 普通用户 */
+/** 服务端身份优先；本地身份只服务没有服务端登录态的演示场景。 */
 function currentRole () {
-  var role = storage.get(config.roleKey);
-  if (role === 'admin' || role === 'user') return role;
-  /* 没手动切过身份时，用配置里的开发期默认值（正式包固定是 user） */
+  var auth = require('./auth');
+  var user = auth.currentUser();
+  if (user && (user.role === 'admin' || user.role === 'user')) return user.role;
+  if (auth.isLogged() || !config.devPanel) return 'user';
+  var demoRole = storage.get(config.roleKey);
+  if (demoRole === 'admin' || demoRole === 'user') return demoRole;
   if (config.devRole === 'admin' || config.devRole === 'user') return config.devRole;
   return 'user';
 }
 
 function setRole (role) {
   if (role !== 'admin' && role !== 'user') return currentRole();
-  storage.set(config.roleKey, role);
-  return role;
+  if (config.devPanel) storage.set(config.roleKey, role);
+  return currentRole();
 }
 
 function isAdmin () {

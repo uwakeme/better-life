@@ -54,8 +54,8 @@ async function findByCategoryAndName (categoryId, name, excludeId) {
     categoryId === null || categoryId === undefined ? null : Number(categoryId),
     name
   ];
-  /* tags.category_id 是 NOT NULL，等值比较与 IS NOT DISTINCT FROM 等价；
-     而且 IS NOT DISTINCT FROM 在 pg-mem 里直接解析不了 */
+  /* category_id 可空，但按（领域, 名称）唯一，所以这里等值比较就够了；
+     IS NOT DISTINCT FROM 在 pg-mem 里直接解析不了 */
   let sql = 'SELECT id FROM tags WHERE name = $2 AND category_id = $1';
   if (excludeId) {
     sql += ' AND id <> $3';

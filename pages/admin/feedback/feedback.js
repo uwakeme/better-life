@@ -76,7 +76,8 @@ Page({
           content: f.content || '',
           reply: f.reply || '',
           author: f.author || '读者',
-          createdAt: f.createdAt || '',
+          /* 日期统一成 YYYY-MM-DD —— 服务端可能带时间部分 */
+          createdAt: format.date(f.createdAt) || '',
           targetType: f.targetType || 'project',
           targetId: f.targetId || 0,
           mediaStatus: f.mediaStatus || 'none',
@@ -95,13 +96,26 @@ Page({
     this.load();
   },
 
+  /**
+   * 打开处理面板
+   * ⚠️ 之前每次打开都把回复框清空 —— 管理员写了一半的回复，
+   *    换个结论再打开就没了。现在带出这条反馈已写的回复。
+   */
   openPanel: function (e) {
     var id = Number(e.currentTarget.dataset.id);
     if (this.data.activeId === id) {
       this.setData({ activeId: 0, pick: '', reply: '', hint: '' });
       return;
     }
-    this.setData({ activeId: id, pick: '', reply: '', hint: '' });
+    var existing = '';
+    var items = this.data.items || [];
+    for (var i = 0; i < items.length; i++) {
+      if (Number(items[i].id) === id) {
+        existing = items[i].reply || '';
+        break;
+      }
+    }
+    this.setData({ activeId: id, pick: '', reply: existing, hint: '' });
   },
 
   setPick: function (e) {
@@ -125,7 +139,13 @@ Page({
       return;
     }
     this.setData({ submitting: true, hint: '' });
-    return api.resolveFeedback(id, { status: this.data.pick, reply: String(this.data.reply || '').trim() })
+    /* reply 只在「只回话」时必须写；其余结论下，
+       回复框里没内容就**不传** reply —— 服务端会保留原来的回复，
+       而不是把它清成空串。 */
+    var body = { status: this.data.pick };
+    var replyText = String(this.data.reply || '').trim();
+    if (replyText) body.reply = replyText;
+    return api.resolveFeedback(id, body)
       .then(function () {
         self.setData({ submitting: false, activeId: 0, pick: '', reply: '' });
         wx.showToast({ title: '已处理', icon: 'none' });

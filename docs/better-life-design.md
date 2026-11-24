@@ -406,7 +406,7 @@ better-life/
 │  │  ├─ index.js / app.js
 │  │  ├─ config.js            环境配置（自写 .env 解析）
 │  │  ├─ db.js                双后端（PostgreSQL / pg-mem）+ 事务与主键
-│  │  ├─ schema.sql           建表脚本（11 张表）
+│  │  ├─ schema.sql           建表脚本（15 张表）
 │  │  ├─ routes/              public.js / me.js / admin.js / search.js / seccheck.js
 │  │  ├─ services/            业务逻辑（见 §5.1）
 │  │  ├─ dao/                 数据库访问 + camelCase 转换
@@ -813,6 +813,10 @@ function bigrams (text) {
 
 「洗发水推荐」→ `['洗发','发水','水推','推荐']`。bigram 对中文短查询召回效果足够，且零依赖。
 
+⚠️ **查询长度有上限（默认 200 字）**：bigram 是逐个发全表 `LIKE` 的，
+2000 字的查询会切成上千个 bigram、上千次全表扫描 —— 这是数据量上去后第一个瓶颈。
+超长就截断，并在响应里如实带 `truncated` 与原始 `queryLength`，不静默吞掉。
+
 同义表达靠 `experiences.search_keywords` 补：「洗头水」「洗发露」写在洗发水那条经验上，
 检索时并进匹配串。**它跟着内容走** —— 内容删了关键词一起消失，不会像全局字典那样留下过期条目。
 （原来有一张全局别名表，实测 4 条里 2 条指向的词库里根本没有，已删，见 §2.6。）
@@ -918,7 +922,18 @@ node server/scripts/reindex.js --since=2026-11-01   # 增量
 node server/scripts/reindex.js --exp=12     # 单条
 ```
 
-流程：读所有 `published` 经验 → 拼装 embedding 文本 → 批量调 embedding API（限速，带断点续跑）→ upsert `search_documents`。
+流程：读所有 `published` 经验 → 拼装 embedding 文本 → 批量调 embedding API → upsert `search_documents`。
+
+**三条落地口径（与实现一致）**：
+
+- **只索引已发布的内容。** 草稿与已下线的内容不进索引 ——
+  之前不管状态都建索引，搜出来点进去却是 404。
+- **重建前先清掉这条经验自己的旧文档。** 要点每次保存都是「删掉整份重插」，id 会变，
+  旧要点的索引文档没人清理，会变成孤儿文档。
+- **脚本按 `config` 判断连的是哪个库**，并在启动时打印。
+  之前读的是 `process.env.DATABASE_URL`，而 `.env` 解析进的是 `fileEnv` ——
+  按 README 把库配进 `.env` 之后，不带 `--memory` 跑会**静默跑在内存库上**，
+  打印「重建 N 个索引文档」而真库的索引一动没动。
 
 > CLI 脚本用于批量与自动化，管理端 API（`POST /api/admin/reindex`）用于「刚改完这一条，立刻重建它的索引」。两者共用同一个 `buildEmbeddingText()` 与 `vectorStore.upsert()`。
 
@@ -927,7 +942,8 @@ node server/scripts/reindex.js --exp=12     # 单条
 1. 改 `server/src/config.js` 里的 provider（`model` + `dim` 一起改）
 2. **建新列**：`ALTER TABLE search_documents ADD COLUMN embedding_new vector;`（新模型是 1024 维就写 `vector(1024)`，
    顺手解决裸 `vector` 列建不了 ANN 索引的问题）
-3. 全量重灌到新列（`reindex.js --column=embedding_new`），旧列保留
+3. 全量重灌到新列（旧列保留）。**换列的迁移脚本要自己写** ——
+   当前 `reindex.js` 没有 `--column` 参数，它只认 `--exp` 与 `--since`
 4. 校验：新列条数 = 已发布经验数 + 要点数，且 `dim` 与配置一致
 5. 切换读取：查询改成 `ORDER BY embedding_new <=> $1`，`model` 过滤条件换成新模型名
 6. 观察一周无异常后删旧列与旧 `model` 的数据
@@ -949,6 +965,12 @@ embedding 文本拼装规则（写死在 `services/search.js` 的 `buildEmbeddin
 3. `scripts/verify-data.js` 会检出缺失索引
 4. 管理端提供"重建索引"按钮
 
+**当前实现到什么程度**（首版）：
+
+- 「已发布但没索引」这个状态**能查出来**（`GET /api/admin/stats` 的 `missingIndex`），管理端能看到有多少条待补
+- 索引失败会**打日志**（`[experiences] 建索引失败 experience=<id>`），不会静默
+- 「逐条重试 + 退避」的后台任务**还没有实现** —— 现在靠管理端手动点「重建索引」
+
 **重试队列的具体做法**（不额外建表，靠"已发布但没索引"这个状态本身当队列）：
 
 - 后台任务每 10 分钟跑一次：扫出 `status='published'` 且在 `search_documents` 里缺行的经验
@@ -967,11 +989,11 @@ embedding 文本拼装规则（写死在 `services/search.js` 的 `buildEmbeddin
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | POST | `/api/auth/login` | body：`{ code }`（`wx.login()` 拿的 code）。服务端 `code2session` 换 openid → 建/查 `users` 行 → 签 token（HMAC，7 天），返回 `{ token, user }`。**这个接口本身不需要带 token** |
-| GET | `/api/health` | 健康检查，返回 `vectorStore`、`embeddingModel`、`dataSource` |
+| GET | `/api/health` | 健康检查，返回 `vectorStore`、`embeddingModel`、`dataSource`。**会真查一次库** —— 库不通时返回 503 且 `status: "degraded"`，不写死 `ok` |
 | GET | `/api/categories` | 一级领域 + 二级标签树 |
 | GET | `/api/tags` | 标签列表 |
 | GET | `/api/experiences` | 列表。query：`categoryId`、`tagId`、`stance`、`page`、`size`。**`stance` 是要点级字段，筛选含义是「这条经验至少有一条该立场的要点」** —— 经验本身没有立场字段（§2.3），不要理解成"这条经验是推荐还是避雷" |
-| GET | `/api/experiences/:id` | 详情：含 points、sources、tags、相关经验，以及有用/没用计数 |
+| GET | `/api/experiences/:id` | 详情：含 points、sources、tags、相关经验，以及有用/没用计数。**带了 token 时额外返回 `myVote` 与 `starred`**（当前用户的投票态与收藏态） |
 | GET | `/api/experiences/:id/related` | 相关经验（同分类 + 标签重叠） |
 | GET | `/api/experiences/:id/sources` | 该经验的来源清单 |
 | POST | `/api/search` | 混合检索，body：`{ query, categoryIds?, stance?, limit? }` |
@@ -988,22 +1010,26 @@ embedding 文本拼装规则（写死在 `services/search.js` 的 `buildEmbeddin
 | POST | `/api/me/favorites/:id` | 收藏 |
 | DELETE | `/api/me/favorites/:id` | 取消收藏 |
 | POST | `/api/me/votes/:id` | body：`{ useful }`。**只有普通用户能投**（管理员不给自己写的内容投票，§6.2） |
-| POST | `/api/feedbacks` | body：`{ targetType, targetId?, kind, content, images? }`。`images` 是已上传的 `media_id` 数组（最多 3 个），服务端逐张送 `mediaCheckAsync`，汇总成这条反馈的 `media_status`（§9.4） |
+| POST | `/api/feedbacks` | body：`{ targetType, targetId?, kind, content, images? }`。`images` 是已上传的 `{ url }` 数组（最多 3 个），服务端逐张送 `mediaCheckAsync`，汇总成这条反馈的 `media_status`（§9.4）。正文上限 2500 字 |
 | GET | `/api/me/feedbacks` | 我的反馈及处理状态 |
 
 ### 8.3 管理接口（`role=admin`）
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET/POST | `/api/admin/experiences` | 列表（含 draft）/ 新建。GET 支持 query `q`（搜标题 / 结论 / 标签）与 `cat` |
-| GET/PUT/DELETE | `/api/admin/experiences/:id` | 详情 / 更新 / 删除 |
-| POST/PUT/DELETE | `/api/admin/points[/:id]` | 要点增改删 |
-| POST/PUT/DELETE | `/api/admin/sources[/:id]` | 来源增改删 |
-| PUT/DELETE | `/api/admin/categories[/:id]` | 分类管理（一级不可删） |
-| PUT/DELETE | `/api/admin/tags[/:id]` | 标签管理 |
-| GET | `/api/admin/feedbacks` | 反馈列表，query：`status`、`targetType`、`q`（搜反馈内容 / 提交人 / 关联经验标题） |
-| PATCH | `/api/admin/feedbacks/:id` | body：`{ status, reply }` |
+| GET/POST | `/api/admin/experiences` | 列表（含 draft）/ 新建。GET 支持 query `q`（搜标题 / 结论 / 正文 / 标签）、`cat`、`status`、`page`、`size` |
+| GET/PUT/DELETE | `/api/admin/experiences/:id` | 详情 / 更新 / 删除。**PUT 缺省字段一律取当前值**（不传要点/依据/标签等于保留原样，不会清空）；删除不存在的返回 404 |
+| POST | `/api/admin/experiences/:id/publish` | 发布（校验：标题结论非空、至少 1 条要点、至少 1 条依据、每条依据都挂上了要点） |
+| POST | `/api/admin/experiences/:id/unpublish` | 下线（同时清掉这条经验的搜索索引）；不存在返回 404 |
+| PUT/DELETE | `/api/admin/tags[/:id]` | 标签管理（改名 / 改归属领域 / 新增 / 删除） |
+| GET | `/api/admin/feedbacks` | 反馈列表，query：`status`、`targetType`、`q`。**不回传 openid** —— 界面用不上，统一显示「读者」 |
+| PATCH | `/api/admin/feedbacks/:id` | body：`{ status, reply? }`。**不传 `reply` 表示保留原回复**，传空串才是明确清空 |
+| GET | `/api/admin/stats` | 库内指标。全部由 SQL 聚合得出（不被列表上限截断），带 `missingIndex`（已发布但缺索引的条数） |
 | POST | `/api/admin/reindex` | body：`{ scope: 'all'|'experience', id? }` 重建索引 |
+
+> **要点与来源没有独立接口** —— 内容随经验整体保存（一份经验 = 结论 + 要点 + 依据是不可分的整体），
+> 所以 `/api/admin/points`、`/api/admin/sources` 不存在。这是刻意的偏离，不是漏做。
+> 一级领域（`/api/admin/categories`）同样不开放管理接口：九个领域是内容分类的骨架，不允许在界面上增删。
 
 ### 8.4 通用约定
 
@@ -1014,11 +1040,23 @@ embedding 文本拼装规则（写死在 `services/search.js` 的 `buildEmbeddin
   ⚠️ 代价是：管理员身份被取消后，旧 token 在有效期内仍带着旧 role —— 所以第三层（数据层查库）不能省，
   管理接口必须再查一次 `users.role`。或者把 token 有效期压到 1 天、role 变更时主动作废该 openid 的 token。
 - **登录**：`wx.login()` 拿 code → 服务端 `code2session` 换 openid → 签 token。**AppSecret 只在服务端**
-- **错误码**：`UNAUTHORIZED` / `FORBIDDEN` / `NOT_FOUND` / `RATE_LIMITED` / `CONTENT_REJECTED`（内容安全审核不通过）
-- **限流**：写接口按 openid 限流——反馈 ≤ 5 条/天，投票/收藏 ≤ 60 次/分钟
+- **错误码**：`UNAUTHORIZED` / `FORBIDDEN` / `NOT_FOUND` / `VALIDATION` / `RATE_LIMITED` / `CONTENT_REJECTED`（内容安全审核不通过）
+  - 客户端按 `code` 分支处理，**不解析 message 文本**。
+  - 4xx 是业务错误（该提示用户），5xx 是服务端故障 —— 5xx 返回通用文案 + 一个错误编号，
+    不把数据库的原始报错回给客户端（里面带着表名、约束名）。
+- **限流**：写接口按 openid 限流——反馈 ≤ 5 条/天，投票/收藏 ≤ 60 次/分钟。
+  固定窗口与每日额度都通过数据库原子更新实现，多实例部署不会各自计数；桶键只存身份摘要，不存原始 openid/IP。
+  - 部署在反向代理后面时**必须配 `TRUST_PROXY`**，并让 nginx 透传 `X-Forwarded-For`。
+    不配的话所有人的 `req.ip` 都是代理地址，匿名检索全站共用一个限流桶。
+  - 登录接口也限流（每次调用都要向微信发一次请求）。
 - **搜索也要限流**：`POST /api/search` 每次都要调 embedding，有真金白银的成本。
-  按 openid（未登录时按 IP）限 **30 次/分钟**，超了返回 `RATE_LIMITED`。
+  按 openid（未登录时按 IP）限 **30 次/分钟**，超了返回 `RATE_LIMITED` 与 `Retry-After`。
   缓存命中率上来之后再考虑放宽，别一上来就开大闸
+- **出站必须有超时**：微信接口与 embedding 都不受我们控制，挂了就是一直挂着 ——
+  请求不返回，界面就一直转圈。统一走 `lib/http.js` 的 `fetchWithTimeout`，
+  超时（默认 15 秒，`OUTBOUND_TIMEOUT_MS` 可调）按「服务不可用」处理，不假装成功
+- **数据库连 TLS 要校验证书**：`PGSSL=1` 开启 TLS，默认使用系统 CA；需要私有 CA 时再配 `PGSSL_CA`。
+  `PGSSL_ALLOW_INSECURE=1` 只允许显式开发调试，生产环境直接拒绝启动。
 
 ---
 
@@ -1036,10 +1074,18 @@ embedding 文本拼装规则（写死在 `services/search.js` 的 `buildEmbeddin
 
 **浏览完全公开，不触发登录**。只有收藏、投票、反馈才需要登录，且登录是静默的（用户点收藏时才唤起），不打断阅读。
 
+**写操作一律先确保登录**：没有 token 就静默登录一次；服务端回 401 说明 token 过期，
+清掉登录态重新登录一次再重试（token 有 7 天有效期，不能让用户卡在「一直未登录」）。
+
+> ⚠️ **写操作失败不回落演示数据。** 读接口（目录、列表、详情、检索）可以回落本地演示数据；
+> 收藏、投票、反馈、发布这些写操作要么真成功、要么如实报错 ——
+> 之前写操作也回落，结果服务端返回 401 时界面照样提示「已收藏」「已发布」，
+> 数据只写进了本机的假数据里，而用户完全看不出来。
+
 ### 9.2 权限三层校验
 
 1. **前端**：管理入口只在 `role==='admin'` 时渲染（用户看不到）；反过来，提交反馈的入口只在 `role!=='admin'` 时渲染（管理员不给自己提反馈，见 §4.3）
-2. **中间件**：`middleware/admin.js` 校验 token 里的 `role==='admin'`（token payload 里带 role，§8.4）
+2. **中间件**：`middleware/auth.js` 的 `requireAuth` + `requireAdmin`（中间件查库确认角色，不只信 token 里的 role，§8.4）
 3. **数据层**：DAO 里管理方法再查一次角色 —— 这一层不是冗余，是防 token 里 role 过期的兜底（§8.4）
 
 **不能只靠前端隐藏**。前端隐藏只是体验，不是安全。
@@ -1070,30 +1116,48 @@ embedding 文本拼装规则（写死在 `services/search.js` 的 `buildEmbeddin
 **状态机**
 
 ```
-上传图片 → 拿 media_id
-  → 调 mediaCheckAsync → 拿 trace_id
-  → 反馈落库：status='pending'，media_status='checking'，media_trace_id=trace_id
+上传图片 → 换到可下载的 url（微信 media/uploadimg）
+  → 调 mediaCheckAsync（参数是 media_url）→ 拿 trace_id
+  → 反馈落库：status='pending'，media_status='checking'，每张图的 trace_id 记在 images 里
   → 微信异步回调 POST /api/seccheck/callback（带 trace_id 与结论）
        ├─ 通过   → media_status='passed'，图片正常显示
        ├─ 不通过 → media_status='rejected'，图片不展示，反馈标为「内容未通过审核」
        └─ 没回调 → 30 分钟超时：服务端拿 trace_id 主动查询一次 mediaCheckAsync 的查询接口兜底
 ```
 
+> **官方协议要点**（2026-10-29 版，代码以此为准）：
+>
+> - `msgSecCheck` 的请求体是 `{ content, version: 2, scene: 2, openid }` ——
+>   字段名是 **content** 不是 msg；**openid 必填**，且必须是近两小时访问过小程序的真实用户。
+> - 返回 `errcode=0` 只代表「调用成功」，还要看 `result.suggest`：
+>   `risky`（违规）/ `review`（需人工复核）/ `pass`（通过）。
+>   `errcode` 不为 0 是「没查成」而不是「内容违规」，要如实说服务不可用；
+>   缺少或未知 `suggest` 也一律不放行。
+> - `mediaCheckAsync` 的参数是 **`media_url`**（可下载的地址），**没有 `media_id`**。
+> - 回调的 `result` 是**对象** `{ suggest, label }`，不是数组；细节在 `detail` 数组里。
+> - 回调按消息推送的方式接：校验 `signature`，判断 `Event === 'wxa_media_check'`。
+>   **没配 `MEDIA_CALLBACK_TOKEN` 时回调直接拒绝** —— 之前是全放行，
+>   匿名请求就能把一条反馈从「审核中」改成「已通过」；生产启用真实审核时该配置必填。
+
 **表字段**（已经写进 §6.2 的 `feedbacks` 表定义，这里只解释语义）
 
 ```sql
   images          JSONB NOT NULL DEFAULT '[]',
-  -- [{ media_id, url }]，最多 3 张（一条反馈最多 3 张图够用，不为它单开一张表）
+  -- [{ url, traceId, status }]，最多 3 张（一条反馈最多 3 张图够用，不为它单开一张表）
+  -- ⚠️ 每张图一个 trace_id —— 单列存不下多张图的 trace，
+  --   所以每张图的 traceId 与结论都记在自己那一项里
   media_status    TEXT NOT NULL DEFAULT 'none',
   -- none 无图 | checking 审核中 | passed 通过 | rejected 未通过
   media_trace_id  TEXT,
+  -- 第一张图的 trace_id（兜底查询用；多图以 images 里各项为准）
   media_checked_at TIMESTAMPTZ
 ```
 
-**多张图怎么汇总成一条结论**：服务端对每个 `media_id` 各调一次 `mediaCheckAsync`，
+**多张图怎么汇总成一条结论**：服务端对每个 `media_url` 各调一次 `mediaCheckAsync`，
 **全部通过**才算 `passed`；**任意一张被拒**整条记 `rejected`；还有没回的就记 `checking`。
 一张图不过，整条反馈的图都不展示 —— 不做「有的能看有的不能」，
-读者侧看到的是一个确定的状态，而不是半张图。
+读者侧看到的是一个确定的状态，而不是半张图。并发回调在事务内锁定反馈行，按图片索引合并，
+避免后到的结论覆盖先到的结论；trace 落库前到达的回调会暂存结论并消耗 nonce，trace 持久化后自动合并，同 nonce 重放仍被拒绝。
 
 **前端口径：读者侧和管理侧是两种样子**
 
@@ -1107,15 +1171,22 @@ embedding 文本拼装规则（写死在 `services/search.js` 的 `buildEmbeddin
 图片没过审不等于整条反馈作废。
 
 **前端怎么选图**：`wx.chooseMedia({ count: 3, mediaType: ['image'], sizeType: ['compressed'] })`
-拿到临时文件 → 逐个 `wx.uploadFile` 到自己的服务器 → 服务端上传到微信素材库换 `media_id` → 再调 `mediaCheckAsync`。
-**临时文件路径不能直接送审** —— 审核接口只认 `media_id`。
+拿到临时文件 → 读成 base64 → POST 到自己的服务器 → 服务端上传到微信 `media/uploadimg` 换一个可下载的 url →
+这个 url 才是 `mediaCheckAsync` 要的 `media_url`。
+**临时文件路径不能直接送审** —— 审核服务器下载不到本机路径。
+
+> 上传走 base64 的 JSON 而不是 `wx.uploadFile` 的 multipart：
+> 服务端只要 `express.json` 就能收，**不必装 multipart 解析器**，
+> 依赖保持 express + pg 两个（§5.4）。上传接口先登录与限流，再解析大请求体；
+> 严格校验 base64、图片结构、尺寸与大小，不接受只有文件头的假图片。
+> 上传成功后按上传者记录 30 分钟图片归属，提交反馈时再次校验，防止冒用他人媒体 URL。
 
 **相关接口**
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/seccheck/callback` | 微信异步审核回调。要做签名校验 + 幂等（同一 trace_id 重复回调只处理一次） |
-| GET | `/api/seccheck/trace/:traceId` | 服务端主动查询审核结果（超时兜底用） |
+| POST | `/api/seccheck/callback` | 微信异步审核回调。验签 + 幂等（同一 trace_id 重复回调结果一致）+ 多图汇总 |
+| GET | `/api/seccheck/trace/:traceId` | 服务端主动查询审核结果（超时兜底用）。**管理端专用** —— 审核结论只有管理员看得到 |
 
 ⚠️ 回调端点是公网入口，别裸奔：验签 + 幂等 + 记录原始报文，出问题要能查。
 
@@ -1183,26 +1254,28 @@ onShareAppMessage () {
 
 沿用油走势项目的 `scripts/verify-*.js` 风格，有错 exit 1，改完必跑。
 
-> **实施后的脚本清单**（服务于真机与后端）。九支仓库级自检里有八支是断言脚本（共 **342 项断言**），
-> 第九支 `verify-links.js` 逐条探测 62 条来源链接（当前 **62/62 可达**）。
-> 服务端另有 `selftest.js` 与 `http-test.js`，**各 101 项断言全绿**（19 组）。
-> 原型阶段的自检 `scripts/verify-prototype.mjs` 仍在仓库里（§12.1），当前 **174 项断言全绿**：
-> 14 页 × 2 身份 × 10 场景渲染冒烟、状态级行为断言、CSS 对比度复算、口径守护。
+> **实施后的脚本清单**（服务于真机与后端）。九支仓库级断言脚本共 **460 项断言**，
+> 由 `scripts/verify-all.js` 一并执行；`--with-links` 另逐条探测 62 条来源链接（当前 **62/62 可达**）。
+> 服务端 `selftest.js` 与 `http-test.js` **各 168 项断言、33 组全绿**；
+> `regression-test.js` 另覆盖安全、并发、限流、索引与生产配置，**24 项全绿**。
+> 原型阶段的自检 `scripts/verify-prototype.mjs` 仍保留为补充检查（§12.1），不纳入上述一键回归。
 
 | 脚本 | 检查内容 | 状态 |
 | --- | --- | --- |
-| `scripts/verify-prototype.mjs` | 原型自检。渲染冒烟 + 状态级行为断言 + 对比度复算 + 口径守护（§12.1） | 已存在（174 项全绿） |
+| `scripts/verify-prototype.mjs` | 原型补充自检。渲染冒烟 + 状态级行为断言 + 对比度复算 + 口径守护（§12.1） | 已保留，不纳入一键回归 |
 | `scripts/lint-wxml.js` | WXML 静态检查（非法标签、事件绑定缺失、路径写错） | 已存在（127 项全绿） |
-| `scripts/check-modules.js` | 运行时模块 + 服务端模块加载冒烟，挡"删了函数体留着引用" | 已存在（68 项全绿） |
-| `scripts/verify-data.js` | 数据层自检（§6.3 的完整性断言） | 已存在（16 项全绿） |
-| `scripts/verify-search.js` | 检索自检：固定查询集 → 期望命中（回归），RRF 排序稳定，降级链可用 | 已存在（42 项全绿） |
+| `scripts/check-modules.js` | 运行时模块 + 服务端模块加载冒烟，挡"删了函数体留着引用" | 已存在（75 项全绿） |
+| `scripts/verify-data.js` | 数据层自检（§6.3 的完整性断言） | 已存在（21 项全绿） |
+| `scripts/verify-search.js` | 检索自检：固定查询集 → 期望命中（回归），RRF 排序稳定，降级链可用 | 已存在（51 项全绿） |
 | `scripts/verify-tokens.js` | 样式令牌自检：小程序 `styles/tokens.wxss` 与原型 `design/assets/dir-c.css` 逐令牌对照 + 全矩阵对比度复算 | 已存在（11 项全绿） |
-| `scripts/verify-copy.js` | 界面文案自检：读者侧不出现角色术语、口吻书面语、角色词必须落在守卫内 | 已存在（24 项全绿） |
-| `scripts/verify-pages.js` | 页面自检：14 页结构、路由参数、组件与状态覆盖 | 已存在（42 项全绿） |
+| `scripts/verify-copy.js` | 界面文案自检：读者侧不出现角色术语、口吻书面语、角色词必须落在守卫内 | 已存在（27 项全绿） |
+| `scripts/verify-pages.js` | 页面自检：14 页结构、路由参数、组件与状态覆盖、可访问性语义 | 已存在（52 项全绿） |
 | `scripts/verify-links.js` | 来源链接可达性自检：62 条依据的真实链接逐条探测 + 占位域名黑名单 | 已存在（62/62 可达） |
-| `scripts/verify-contract.js` | 端到端契约自检：前端每个调用都有后端路由 + 响应包结构 + 检索结果结构 | 已存在（12 项全绿） |
-| `server/scripts/selftest.js` | 服务端单元自检：DAO 的 camelCase 转换、RRF 融合、embedding 文本拼装 | 已存在（101 项全绿） |
-| `server/scripts/http-test.js` | 服务端接口冒烟：真起一个服务逐个打 API，校验响应包结构与鉴权行为 | 已存在（101 项全绿） |
+| `scripts/verify-contract.js` | 端到端契约自检：前端每个调用都有后端路由 + 响应包结构 + 检索结果结构 | 已存在（33 项全绿） |
+| `scripts/verify-client-behavior.js` | 客户端行为：错误码、登录重试、分页竞态、搜索、上传锁、编辑状态 | 已存在（63 项全绿） |
+| `server/scripts/selftest.js` | 服务端接口自检：DAO、鉴权、内容、审核回调与指标 | 已存在（168 项全绿） |
+| `server/scripts/http-test.js` | 服务端接口冒烟：真起一个服务逐个打 API，校验响应包结构与鉴权行为 | 已存在（168 项全绿） |
+| `server/scripts/regression-test.js` | 安全与并发专项：图片归属、回调竞态、原子限流、索引生命周期、生产配置 | 已存在（24 项全绿） |
 | `server/scripts/reindex.js` | 索引重建：重算已发布经验的索引文档（30 条经验 → 121 个文档） | 已存在 |
 | `scripts/gen-seed-sql.mjs` | 由 `data/*.json` 生成可 review 的 `server/sql/seed.sql` | 已存在 |
 | `scripts/verify-embedding.js` | embedding provider 自检：维度对得上、批量接口正常、中文不乱码 | 未建 —— 一期 embedding 用本地 bigram-hash，不调外部接口；维度与文本拼装已由 `selftest.js` 覆盖，接外部 provider 时再补 |
@@ -1514,7 +1587,7 @@ B0
 | 2 | **内容安全审核接口** | 必须接 `msgSecCheck`（文本，同步）/ `mediaCheckAsync`（多媒体，**异步**，见 §9.4）。文本审核通过才落库；带图的反馈先落库、图片标"审核中"，回调后再定 |
 | 3 | **健康类免责** | 健康领域只做生活经验与科普，不做医疗诊断建议。免责条固定在**健康类经验详情页顶部**，不只是文档里写一句 |
 | 4 | **来源引用合规** | 只存标题+链接，不转载原文正文 |
-| 5 | **隐私说明** | 收集 openid（登录）、nickname/avatar（可选授权）。填写《小程序用户隐私保护指引》，声明用途；**「我的」页要有隐私指引入口**，不能只在后台文档里躺着 |
+| 5 | **隐私说明** | 收集 openid（登录）、nickname/avatar（可选授权）。**反馈附图用 `wx.chooseMedia`（选图）—— 属隐私相关接口，必须在《小程序用户隐私保护指引》里声明用途**，否则提审会被驳；**「我的」页要有隐私指引入口**，不能只在后台文档里躺着 |
 | 6 | **AppID 与 AppSecret** | AppID 放 `project.private.config.json`（不入库），AppSecret 只在服务端 `.env` |
 | 7 | **服务器域名 ICP 备案** | `wx.request` 的合法域名**必须已备案**，新备案域名要 24 小时后才能配置。域名没备案，API 根本调不通（与主体是不是个人无关，§16.1） |
 | 8 | **外链打开方式** | 个人主体配不了业务域名，来源链接不能在小程序里直接打开 → 统一「复制链接 + 提示去浏览器打开」 |
@@ -1585,6 +1658,8 @@ B0
 
 **未决（需要后续拍板，不阻塞本次交付）**：
 
+- 编辑页要不要加离开确认与自动保存（长表单误触返回会丢内容）
+- 数据库要不要上 migration 与 CHECK 约束（开发期直接改 `schema.sql` 重建更省事）
 - 图片卡片的具体样式
 - 是否给健康/钱财领域单独做"到期再确认"推送（依赖订阅消息模板）
 - 分类是否需要"多分类"支持（一条经验能否同时属于两个领域）
@@ -1610,9 +1685,9 @@ B0
 
 ## 18. 附：速查
 
-**数据库**：11 张表（categories / experiences / points / sources / tags / experience_tags / users / favorites / votes / feedbacks / search_documents）
+**数据库**：15 张表（categories / experiences / points / sources / tags / experience_tags / users / favorites / votes / feedbacks / search_documents / seccheck_nonces / uploaded_media / rate_limits / pending_media_callbacks）
 
-**页面**：13 个（3 个 tab + 10 个二级页）
+**页面**：14 个（3 个 tab + 11 个二级页）
 
 **API**：9 组公开（含登录）+ 7 组需登录 + 10 组管理
 
@@ -1848,3 +1923,84 @@ B0
 
 **自检结果**：仓库级八支断言脚本 **342 项全绿**，链接自检 **62/62 可达**（46 个站点），
 服务端 `selftest.js` 与 `http-test.js` **各 101 项全绿**（19 组）。
+### 第 8 轮 · v1.8（2026-11-24 · 代码审查落地）
+
+一次针对**已落地代码**的审查（不是设计审查）。报告逐条核对后确认成立的问题已全部修掉，
+并补了回归断言钉住它们。**产品口径一条没动** —— 这一轮修的全是「实现与文档说的不一致」。
+
+**先修的那一条（其余问题的可见性都靠它）**
+
+客户端把所有非 2xx 响应一律变成 `HTTP` 错误码，服务端的业务错误码全被吞掉；
+于是「回落演示数据」的规则对服务端响应从未生效 —— 收藏、投票、反馈、发布在界面上都显示成功，
+服务端却返回 401，数据只写进了本机的假数据。现在：
+
+- 客户端透传服务端错误码；**写操作不再回落演示数据**，只有读接口回落
+- 写操作前置「确保登录」：没 token 就静默登录；401 说明 token 过期，清掉登录态重登一次再重试
+- `local.login` 的假 token（`demo-token`）不再写进登录态
+
+**其余按口径归类**
+
+| 类别 | 改了什么 |
+| --- | --- |
+| §9.1 写操作不回落 | 见上。写操作要么真成功、要么如实报错 |
+| §9.1 登录保障 | 新增 `ensureLogin()`，所有写操作走它 |
+| §8.1 立场筛选 | 列表接口的 `stance` 之前被整个忽略（不传、传错值返回的是同一批） |
+| §8.3 PUT 语义 | 缺省字段一律取当前值 —— 之前对草稿只传标题，要点/依据/标签会被清空 |
+| §8.3 404 | 删除、下线不存在的经验返回 404（之前返回 200） |
+| §8.1 health | 真查一次库，不通返回 503；`dataSource` 按实际库模式上报 |
+| §8.1 日期 | DATE 列统一转成 `YYYY-MM-DD`（之前是带时区的 ISO 时间串，界面直接显示那串） |
+| §8.1 详情 | 带 token 时额外返回 `myVote` 与 `starred` |
+| §8.4 错误码 | 5xx 不再把数据库原始报错回给客户端，改为通用文案 + 错误编号，并打日志 |
+| §9.3 文本审核 | 按官方协议：`content` 字段、真实 `openid`、判 `result.suggest`（之前字段名错、openid 写死、只看 errcode） |
+| §9.4 图片审核 | 按官方协议：`media_url`、每图一个 `traceId`、回调按消息推送验签（之前 `media_id` 塞进 `media_url`、回调把对象当数组遍历） |
+| §9.4 回调鉴权 | 没配 `MEDIA_CALLBACK_TOKEN` 时**直接拒绝**（之前全放行，匿名请求能改审核结论） |
+| §9.4 上传 | 要登录、有单 IP 限流、校验图片魔数与大小；走 base64 JSON，不必装 multipart 解析器 |
+| §7.8 索引 | 只索引已发布内容；重建前清掉该经验自己的旧文档（避免孤儿）；下线同时清索引；失败打日志 |
+| §7.9 缺索引 | `listMissingIndex` 接上管理端（`stats.missingIndex`），后台重试任务仍未实现（见 §7.9） |
+| §8.4 限流 | 反向代理场景配 `TRUST_PROXY`；登录接口加限流；浏览计数按小时去重 |
+| §6.2 草稿隔离 | 草稿不再能经 `sources` / 收藏 / 反馈接口泄露到读者侧 |
+| §6.2 投票 | 投票与计数放进同一事务（之前三步独立语句，并发会撞唯一键） |
+| §6.2 反馈计数 | 只在首次处理时计数（之前处理两次就加两次） |
+| §6.2 反馈回复 | 不传 `reply` 表示保留原回复（之前改成别的结论会把回复清成空串） |
+| §4.1 发布护栏 | 依据引用不存在的要点会被拒（之前映射时被静默丢弃，照样能发布） |
+| §3.2 编辑器 | 补核查日期与下次复核日期两个入口（之前「待复核」指标消不掉） |
+| §2.4 契约 | 领域说明字段两套名字都认；命中原因「只在结论里命中」不再没有原因；收藏排序生效；管理端搜索能搜标签 |
+| §3.2 交互 | 首页下拉刷新启用；「我的」页不再重复请求；来源页少打一个接口；标签管理页的加载竞态修掉 |
+| §3.5 配置 | 正式包自动关闭开发面板与演示数据回落（之前只靠人工记得改） |
+
+**顺带修掉的真 bug**（审查之外发现的）
+
+- `listMissingIndex` 用 `NOT EXISTS`（相关子查询）—— pg-mem 直接解析不了，这条路径从来没被执行过；改用 LEFT JOIN
+- `DELETE ... RETURNING` 没带方向条件，把「改投」误判成「取消投」
+- pg-mem 的 `DATE` 会解析成 Date 对象，与真库行为不同；日期格式化因此统一放在转换层（`lib/to-camel.js`），两边行为一致
+
+**自检结果**：服务端两支自检从 **101 项 / 19 组涨到 137 项 / 31 组**，全绿；
+新增的 12 组都是这次修掉的问题的回归断言（草稿隔离、删除下线 404、非法参数、立场筛选、
+反馈上限与计数、上传鉴权、投票与收藏回显、health 探活、管理端搜索、统计口径、领域说明、日期格式）。
+仓库级自检新增一支 `scripts/verify-client-behavior.js`（37 项）——
+把客户端那几处最容易回退的行为钉住：错误码透传、写操作不回落、立场筛选映射、
+领域页筛选、日期格式、正式包配置、投票回显。
+
+> 这支脚本的桩加载方式有个坑值得记：**模块必须缓存**。
+> `api.js` 与 `auth.js` 互相 `require`，不缓存会加载出两份实例 ——
+> 登录态存进 A 实例，业务调用读的是 B 实例，看起来「明明登录了却一直 401」。
+
+**同一轮里补完的 P3 优化项**
+
+| 项 | 改了什么 |
+| --- | --- |
+| 出站超时 | 微信接口与 embedding 统一走 `lib/http.js` 的 `fetchWithTimeout`（默认 15 秒）—— 上游挂住时请求不再无限挂着 |
+| 数据库证书 | `PGSSL_CA` 配了就真校验服务端证书；只开 `PGSSL` 不配 CA 会打警告，不再默默不校验 |
+| 检索长度 | 查询超过 200 字截断，响应带 `truncated` 与原始长度 |
+| 关键词权重 | 命中搜索关键词的分数不再被算两遍（`wmain` 里已有一次，后面又加一次） |
+| 检索截断 | 关键词路的 `LIMIT` 加上 `ORDER BY` —— 命中超过上限时按权重高的先留，不再看数据库返回顺序 |
+| 管理端筛选 | 列表补状态筛选（服务端本来就支持 `status`，之前界面上没有入口）与删除入口 —— 删除不可撤销，删前弹确认并说清「要点、依据、索引一起消失」 |
+| 废弃 API | `wx.getSystemInfoSync` 换成 `wx.getWindowInfo`（老基础库再退回旧接口） |
+| 自检一条命令 | 新增 `scripts/verify-all.js`：跑完全部断言脚本与服务端用例，任何一支失败就 `exit 1` |
+
+服务端用例因此从 137 项 / 31 组涨到 **146 项 / 33 组**，仓库级 9 支合计 **383 项**，全绿。
+
+**顺带发现的一个报告里没有的真 bug**：`utils/cloud.js` 没有 `patch` 方法，
+而 `api.js` 的「处理反馈」调的就是 `cloud.patch` ——
+服务端模式下点「处理反馈」必然抛 TypeError，反馈根本处理不了。
+已补上，并被上面那支脚本的「写操作不回落」一组钉住。

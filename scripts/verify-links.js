@@ -121,7 +121,11 @@ async function checkAll (urls, withBody) {
   async function worker () {
     while (cursor < urls.length) {
       const i = cursor++;
-      results[i] = await check(urls[i], withBody);
+      let result = await check(urls[i], withBody);
+      if (!result.ok && /aborted|timeout|network|fetch failed/i.test(result.error)) {
+        result = await check(urls[i], withBody);
+      }
+      results[i] = result;
     }
   }
   const pool = [];

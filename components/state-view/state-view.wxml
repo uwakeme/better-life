@@ -1,4 +1,4 @@
-<view wx:if="{{type === 'loading'}}" class="skel-list">
+<view wx:if="{{type === 'loading'}}" class="skel-list" aria-role="status" aria-label="内容加载中">
   <view class="skel">
     <view class="skel-l w90"></view>
     <view class="skel-l w60"></view>

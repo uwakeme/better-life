@@ -38,40 +38,6 @@ function requireAdmin (req, res, next) {
   }
 }
 
-/** 限流：按 key 计数（§8.4） */
-function rateLimit (options) {
-  const o = options || {};
-  const windowMs = o.windowMs || 60000;
-  const max = o.max || 60;
-  const keyFn = o.key || function (req) { return req.ip; };
-  const buckets = new Map();
-
-  return function (req, res, next) {
-    try {
-      const key = keyFn(req);
-      const now = Date.now();
-      let bucket = buckets.get(key);
-      if (!bucket || now - bucket.start >= windowMs) {
-        bucket = { start: now, count: 0 };
-        buckets.set(key, bucket);
-      }
-      bucket.count++;
-      if (bucket.count > max) {
-        throw fail('RATE_LIMITED', '操作太频繁了，请稍后再试');
-      }
-      /* 顺手清掉过期的桶，别让内存无限涨 */
-      if (buckets.size > 5000) {
-        for (const [k, b] of buckets) {
-          if (now - b.start >= windowMs) buckets.delete(k);
-        }
-      }
-      next();
-    } catch (e) {
-      next(e);
-    }
-  };
-}
-
 /** 已登录用户的限流 key */
 function userKey (req) {
   return (req.user && req.user.openid) || req.ip;
@@ -80,6 +46,5 @@ function userKey (req) {
 module.exports = {
   requireAuth: requireAuth,
   requireAdmin: requireAdmin,
-  rateLimit: rateLimit,
   userKey: userKey
 };

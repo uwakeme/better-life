@@ -1,4 +1,7 @@
 {
+  "enablePullDownRefresh": true,
+  "backgroundTextStyle": "dark",
+  "backgroundColor": "#f2e8e3",
   "usingComponents": {
     "nav-bar": "/components/nav-bar/nav-bar",
     "experience-card": "/components/experience-card/experience-card",

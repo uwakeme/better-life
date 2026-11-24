@@ -1,11 +1,18 @@
 .card {
+  border: none;
+  margin: 0 0 26rpx;
+  width: 100%;
+  text-align: left;
+  font-family: var(--sans);
   background: var(--s-cream);
   border-radius: 40rpx;
   padding: 30rpx 30rpx 28rpx;
   box-shadow: var(--sh-rpx) var(--shadow);
   position: relative;
-  margin-bottom: 26rpx;
+  min-height: 88rpx;
 }
+.card::after { border: none; }
+.keyword { color: var(--bad-ink); background: var(--s-lemon); font-weight: 900; }
 .card.s-lemon { background: var(--s-lemon); }
 .card.s-mint { background: var(--s-mint); }
 .card.s-peach { background: var(--s-peach); }

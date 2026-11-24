@@ -19,7 +19,11 @@ Page({
     tags: [],
     tagId: 0,
     cards: [],
-    total: 0
+    total: 0,
+    page: 1,
+    size: 10,
+    hasMore: false,
+    loadingMore: false
   },
 
   onLoad: function (query) {
@@ -29,44 +33,85 @@ Page({
     this.load();
   },
 
+  onReachBottom: function () {
+    this.loadList(true);
+  },
+
   load: function () {
+    return Promise.all([this.loadCats(), this.loadList(false)]);
+  },
+
+  loadCats: function () {
     var self = this;
-    this.setData({ loading: true, error: '' });
-    return Promise.all([
-      api.getCategories(),
-      api.listExperiences({ categoryId: this.data.categoryId, size: 100 })
-    ]).then(function (res) {
-      var cats = res[0].categories || [];
-      var allTags = res[0].tags || [];
+    return api.getCategories().then(function (res) {
+      var cats = res.categories || [];
+      var allTags = res.tags || [];
       var name = '';
       var desc = '';
       for (var i = 0; i < cats.length; i++) {
         if (cats[i].id === self.data.categoryId) {
           name = cats[i].name;
-          desc = cats[i].desc;
+          desc = cats[i].description || cats[i].desc || '';
         }
       }
-      /* 本领域的二级标签 */
       var mine = [];
       for (var j = 0; j < allTags.length; j++) {
         if (allTags[j].categoryId === self.data.categoryId) {
           mine.push({ id: allTags[j].id, name: allTags[j].name });
         }
       }
-      var list = res[1].items || [];
-      var cards = [];
-      for (var k = 0; k < list.length; k++) cards.push(view.cardView(list[k]));
       self.setData({
-        loading: false,
-        source: res[0].source || 'demo',
+        source: res.source || 'demo',
         categoryName: name,
         categoryDesc: desc,
-        tags: mine,
-        cards: cards,
-        total: list.length
+        tags: mine
+      });
+    }).catch(function () { /* 领域信息失败不影响经验列表 */ });
+  },
+
+  loadList: function (append) {
+    var self = this;
+    if (append && (this.data.loading || this.data.loadingMore || !this.data.hasMore)) {
+      return Promise.resolve();
+    }
+    var page = append ? this.data.page + 1 : 1;
+    var seq = (this.listSeq || 0) + 1;
+    this.listSeq = seq;
+    this.setData(append ? {
+      loadingMore: true, error: ''
+    } : {
+      loading: true, loadingMore: false, error: '', page: 1, cards: [], total: 0, hasMore: false
+    });
+    return api.listExperiences({
+      categoryId: this.data.categoryId,
+      tagId: this.data.tagId || undefined,
+      page: page,
+      size: this.data.size
+    }).then(function (res) {
+      if (seq !== self.listSeq) return;
+      var fresh = [];
+      var list = res.items || [];
+      for (var i = 0; i < list.length; i++) fresh.push(view.cardView(list[i]));
+      var total = typeof res.total === 'number' ? res.total : 0;
+      var currentPage = Number(res.page) || page;
+      var size = Number(res.size) || self.data.size;
+      self.setData({
+        loading: false,
+        loadingMore: false,
+        cards: append ? self.data.cards.concat(fresh) : fresh,
+        total: total,
+        page: currentPage,
+        size: size,
+        hasMore: typeof res.hasMore === 'boolean' ? res.hasMore : (currentPage * size < total),
+        source: res.source || 'demo'
       });
     }).catch(function (err) {
-      self.setData({ loading: false, error: (err && err.message) || '网络不太顺畅，没连上' });
+      if (seq !== self.listSeq) return;
+      self.setData({
+        loading: false,
+        loadingMore: false,
+        error: (err && err.message) || '网络不太顺畅，没连上'
+      });
     });
   },
 
@@ -78,20 +123,7 @@ Page({
   },
 
   applyFilter: function () {
-    var self = this;
-    this.setData({ loading: true });
-    api.listExperiences({
-      categoryId: this.data.categoryId,
-      tagId: this.data.tagId,
-      size: 100
-    }).then(function (res) {
-      var list = res[1].items || [];
-      var cards = [];
-      for (var i = 0; i < list.length; i++) cards.push(view.cardView(list[i]));
-      self.setData({ loading: false, cards: cards, total: list.length });
-    }).catch(function (err) {
-      self.setData({ loading: false, error: (err && err.message) || '网络不太顺畅，没连上' });
-    });
+    return this.loadList(false);
   },
 
   openExp: function (e) {
@@ -103,6 +135,6 @@ Page({
   },
 
   retry: function () {
-    this.load();
+    this.loadList(!!this.data.cards.length);
   }
 });

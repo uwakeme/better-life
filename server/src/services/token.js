@@ -12,9 +12,25 @@
 const crypto = require('crypto');
 const config = require('../config');
 
-/** 开发期兜底密钥 —— 生产环境 assertProductionConfig 会拦住 */
+/**
+ * 签发用的密钥。
+ *
+ * ⚠️ 没有写死的兜底密钥 —— 之前这里是 'better-life-dev-secret'，
+ *    任何拿到源码的人都能自签一个 admin token 直接读管理接口、删经验。
+ *    现在只有内存模式（本地自检）或显式 ALLOW_DEV_SECRET=1 才允许用开发密钥，
+ *    其余情况一律拒绝签发 —— 宁可登录失败，也不能给一个能伪造的后门。
+ */
 function secret () {
-  return config.tokenSecret || 'better-life-dev-secret';
+  if (config.tokenSecret) return config.tokenSecret;
+  if (config.useMemoryDb || config.allowDevSecret) return 'better-life-dev-secret';
+  const e = new Error('服务端没有配置 TOKEN_SECRET，无法签发登录凭证');
+  e.code = 'SERVER';
+  throw e;
+}
+
+/** 当前是否在用「谁都能伪造」的开发密钥 */
+function usingDevSecret () {
+  return !config.tokenSecret && (config.useMemoryDb || config.allowDevSecret);
 }
 
 function b64url (buf) {
@@ -96,5 +112,6 @@ function fromHeader (header) {
 module.exports = {
   sign: sign,
   verify: verify,
-  fromHeader: fromHeader
+  fromHeader: fromHeader,
+  usingDevSecret: usingDevSecret
 };

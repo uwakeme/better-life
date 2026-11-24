@@ -1,54 +1,61 @@
 <view class="tk page">
   <nav-bar title="生活经验库" show-back="{{false}}" />
 
-  <view class="search" bindtap="goSearch" hover-class="tap">
+  <button class="search" bindtap="goSearch" hover-class="tap" aria-label="搜索生活经验">
     <image class="search-ic" src="/assets/icons/search.png" />
     <text class="search-t">搜一条用得上的经验</text>
     <view class="search-go">搜</view>
-  </view>
+  </button>
 
   <view wx:if="{{source === 'demo' && !loading}}" class="notice">
-    当前为演示数据，检索结果是写死的样例。
+    当前为演示数据，以下为离线样例。
   </view>
 
   <!-- 九个领域：横向一条，首屏留得下经验卡 -->
   <scroll-view class="rail-scroll" scroll-x="{{true}}" show-scrollbar="{{false}}">
     <view class="rail">
-      <view
+      <button
         wx:for="{{categories}}"
         wx:key="id"
         class="cat"
         data-id="{{item.id}}"
         bindtap="goCategory"
         hover-class="tap"
+        aria-label="查看{{item.name}}领域，{{item.count}}条经验"
       >
         <text class="cat-num">{{item.id}}</text>
         <image class="cat-ic" src="/assets/icons/{{item.icon}}.png" />
         <text class="cat-n">{{item.name}}</text>
         <text class="cat-c">{{item.count}} 张便签</text>
-      </view>
+      </button>
     </view>
   </scroll-view>
 
-  <view wx:if="{{showAllCats}}" class="allcats">
-    <view
+  <view class="sec-h">
+    <view class="sec-h-t">全部领域</view>
+    <button class="sec-h-s touch" bindtap="goAllCats" hover-class="tap" aria-expanded="{{showAllCats}}" aria-controls="home-all-categories">{{showAllCats ? '收起' : '展开'}}</button>
+  </view>
+
+  <view wx:if="{{showAllCats}}" id="home-all-categories" class="allcats">
+    <button
       wx:for="{{categories}}"
       wx:key="id"
       class="allcat"
       data-id="{{item.id}}"
       bindtap="goCategory"
       hover-class="tap"
+      aria-label="查看{{item.name}}领域：{{item.desc}}"
     >
       <text class="cat-n">{{item.name}}</text>
       <text class="cat-c">{{item.desc}}</text>
-    </view>
+    </button>
   </view>
 
   <view class="filter-bar">
     <text class="filter-now">共 {{total}} 条经验</text>
     <view class="grow"></view>
-    <text class="pill {{sort === 'updated' ? 'on' : ''}}" data-k="updated" bindtap="setSort" hover-class="tap">最近更新</text>
-    <text class="pill {{sort === 'fav' ? 'on' : ''}}" data-k="fav" bindtap="setSort" hover-class="tap">收藏最多</text>
+    <button class="pill {{sort === 'updated' ? 'on' : ''}}" data-k="updated" bindtap="setSort" hover-class="tap" aria-role="radio" aria-checked="{{sort === 'updated'}}" aria-label="按最近更新排序">最近更新</button>
+    <button class="pill {{sort === 'fav' ? 'on' : ''}}" data-k="fav" bindtap="setSort" hover-class="tap" aria-role="radio" aria-checked="{{sort === 'fav'}}" aria-label="按收藏最多排序">收藏最多</button>
   </view>
 
   <state-view wx:if="{{loading}}" type="loading" />
@@ -71,4 +78,9 @@
   <view wx:else class="list">
     <experience-card wx:for="{{cards}}" wx:key="id" card="{{item}}" bind:open="openExp" />
   </view>
+  <view wx:if="{{loadingMore}}" class="list-status" aria-role="status">正在加载更多…</view>
+  <view wx:elif="{{hasMore && !loading && !error}}" class="list-status">
+    <button class="btn sm" bindtap="onReachBottom" hover-class="tap">加载更多</button>
+  </view>
+  <view wx:elif="{{!loading && cards.length}}" class="list-status">已经到底了</view>
 </view>

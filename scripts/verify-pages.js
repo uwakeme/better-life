@@ -101,6 +101,31 @@ function main () {
   group('全局配置');
   check('自定义导航（navigationStyle=custom）', app.window && app.window.navigationStyle === 'custom');
   check('sitemap 已配置', !!app.sitemapLocation && fs.existsSync(path.join(ROOT, app.sitemapLocation)));
+  const project = readJson(path.join(ROOT, 'project.config.json'));
+  check('构建不忽略未使用文件', project && project.setting && project.setting.ignoreDevUnusedFiles === false);
+
+  group('可访问性语义');
+  const card = fs.readFileSync(path.join(ROOT, 'components/experience-card/experience-card.wxml'), 'utf8');
+  check('可点击经验卡有原生按钮语义', /<button\b/.test(card) || /aria-role=["']button["']/.test(card));
+  check('可点击经验卡有可读名称', /aria-label=["'][^"'{{][^"']+["']/.test(card));
+  const pills = fs.readFileSync(path.join(ROOT, 'components/tag-pills/tag-pills.wxml'), 'utf8');
+  check('标签选项有原生按钮语义', /<button\b/.test(pills) || /aria-role=["']button["']/.test(pills));
+  check('标签选项暴露选中状态', /aria-(?:checked|selected)=["']/.test(pills));
+  const nav = fs.readFileSync(path.join(ROOT, 'components/nav-bar/nav-bar.wxml'), 'utf8');
+  check('顶栏图标操作都有可读名称', (nav.match(/aria-label=["'][^"']+["']/g) || []).length >= 2);
+  const search = fs.readFileSync(path.join(ROOT, 'pages/search/search.wxml'), 'utf8');
+  check('搜索输入框有明确标签', /aria-label=["'][^"']+["']/.test(search));
+  check('清空搜索有可读名称', /bindtap=["']clearInput["'][^>]*aria-label=["'][^"']+["']|aria-label=["'][^"']+["'][^>]*bindtap=["']clearInput["']/.test(search));
+  const componentsCss = fs.readFileSync(path.join(ROOT, 'styles/components.wxss'), 'utf8');
+  const actRule = componentsCss.match(/\.act\s*\{([^}]*)\}/);
+  const actWidth = actRule && actRule[1].match(/(?:min-)?width:\s*(\d+)rpx/);
+  const actHeight = actRule && actRule[1].match(/(?:min-)?height:\s*(\d+)rpx/);
+  check('顶栏操作触控尺寸至少 88rpx', !!actWidth && !!actHeight &&
+    Number(actWidth[1]) >= 88 && Number(actHeight[1]) >= 88);
+  const pillCss = fs.readFileSync(path.join(ROOT, 'components/tag-pills/tag-pills.wxss'), 'utf8');
+  const pillRule = pillCss.match(/\.pill\s*\{([^}]*)\}/);
+  const pillHeight = pillRule && pillRule[1].match(/min-height:\s*(\d+)rpx/);
+  check('标签选项触控高度至少 88rpx', !!pillHeight && Number(pillHeight[1]) >= 88);
 
   const failed = report('页面清单自检');
   process.exit(failed ? 1 : 0);

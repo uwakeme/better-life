@@ -1,11 +1,14 @@
 <view class="pills {{scroll ? 'pills-row' : ''}}">
   <text wx:if="{{label}}" class="pills-label">{{label}}</text>
-  <view
+  <button
     wx:for="{{items}}"
     wx:key="id"
     class="pill {{value === item.id ? 'on' : ''}}"
     data-id="{{item.id}}"
     bindtap="onPick"
     hover-class="tap"
-  >{{item.name}}</view>
+    aria-role="radio"
+    aria-checked="{{value === item.id}}"
+    aria-label="{{item.name}}{{value === item.id ? '，已选中' : ''}}"
+  >{{value === item.id ? '✓ ' : ''}}{{item.name}}</button>
 </view>

@@ -26,11 +26,10 @@ Page({
   load: function () {
     var self = this;
     this.setData({ loading: true, error: '' });
-    return Promise.all([
-      api.getExperience(this.data.experienceId),
-      api.listSources(this.data.experienceId)
-    ]).then(function (res) {
-      var exp = res[0].experience || {};
+    /* ⚠️ 之前还并行调了 /sources，但结果没用上 —— 多打一个接口。
+       详情接口本身就带 sources。 */
+    return api.getExperience(this.data.experienceId).then(function (res) {
+      var exp = res.experience || {};
       var groups = view.sourceGroups(exp.points || [], exp.sources || []);
       var total = 0;
       for (var i = 0; i < groups.length; i++) total += groups[i].sources.length;

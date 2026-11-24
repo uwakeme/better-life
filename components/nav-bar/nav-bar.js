@@ -34,7 +34,14 @@ Component({
   methods: {
     onBack: function () {
       this.triggerEvent('back');
-      wx.navigateBack({ delta: 1 });
+      /* 页面栈只有一页时（从分享卡直接进详情页）navigateBack 会失败，
+         兜底回首页，别让「返回」按钮点了没反应。 */
+      wx.navigateBack({
+        delta: 1,
+        fail: function () {
+          wx.switchTab({ url: '/pages/home/home' });
+        }
+      });
     },
     onShare: function () {
       this.triggerEvent('share');

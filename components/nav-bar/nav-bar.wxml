@@ -1,16 +1,17 @@
 <view class="navbar" style="padding-top: {{barHeight}}px;">
   <view class="nav-left">
-    <view wx:if="{{showBack}}" class="back" bindtap="onBack" hover-class="tap">
+    <button wx:if="{{showBack}}" class="back" bindtap="onBack" hover-class="tap" aria-label="返回上一页">
       <image class="nav-ic" src="/assets/icons/back.png" />
       <text>返回</text>
-    </view>
+    </button>
     <text class="nav-title">{{title}}</text>
   </view>
   <view class="nav-right" style="margin-right: {{rightReserve}}px;">
-    <view wx:if="{{showStar}}" class="act {{starred ? 'on' : ''}}" bindtap="onStar" hover-class="tap">
+    <button wx:if="{{showStar}}" class="act act-btn {{starred ? 'on' : ''}}" bindtap="onStar" hover-class="tap" aria-label="{{starred ? '取消收藏' : '收藏经验'}}" aria-pressed="{{starred}}">
       <image class="act-img" src="/assets/icons/bookmark.png" />
-    </view>
-    <button wx:if="{{showShare}}" class="act act-btn" open-type="share" hover-class="tap">
+      <text class="act-state">{{starred ? '★' : '☆'}}</text>
+    </button>
+    <button wx:if="{{showShare}}" class="act act-btn" open-type="share" hover-class="tap" aria-label="分享经验">
       <image class="act-img" src="/assets/icons/share.png" />
     </button>
   </view>

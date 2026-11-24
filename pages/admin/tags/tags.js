@@ -29,8 +29,11 @@ Page({
       return;
     }
     this.setData({ allowed: true });
-    this.loadCats();
-    this.load();
+    /* ⚠️ 之前 loadCats() 与 load() 并行发出，
+       load() 直接读 this.data.categories 来分组 ——
+       如果它先返回，分组就是在空的领域列表上做的，之后也不会重建。
+       串起来：先拿领域，再分组。 */
+    this.loadCats().then(this.load.bind(this));
   },
 
   loadCats: function () {

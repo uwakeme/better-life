@@ -6,7 +6,20 @@
   background: var(--s-cream);
   margin-bottom: 26rpx;
 }
-.point-h { display: flex; align-items: flex-start; gap: 18rpx; }
+.point-h {
+  border: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 88rpx;
+  background: transparent;
+  font-family: var(--sans);
+  text-align: left;
+  display: flex;
+  align-items: flex-start;
+  gap: 18rpx;
+}
+.point-h::after, .point-sum::after { border: none; }
 .point-n { font-size: 28rpx; color: var(--ink-3); flex: 0 0 auto; }
 .point-t {
   flex: 1;
@@ -32,6 +45,11 @@
   display: inline-block;
 }
 .point-sum {
+  border: none;
+  margin: 16rpx 0 0;
+  width: 100%;
+  min-height: 72rpx;
+  font-family: var(--sans);
   display: flex;
   align-items: center;
   justify-content: space-between;

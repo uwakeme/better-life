@@ -127,13 +127,43 @@ function applyScene (exp) {
   return copy;
 }
 
-/** 领域名 */
-function catName (catId) {
+function categoryOf (catId) {
   var list = allCategories();
   for (var i = 0; i < list.length; i++) {
-    if (list[i].id === catId) return list[i].name;
+    if (list[i].id === Number(catId)) return list[i];
   }
-  return '';
+  return null;
+}
+
+function catName (catId) {
+  var cat = categoryOf(catId);
+  return cat ? cat.name : '';
+}
+
+function catSlug (catId) {
+  var cat = categoryOf(catId);
+  return cat ? cat.slug : '';
+}
+
+function demoRole () {
+  var value = storage.get(config.roleKey);
+  if (value === 'admin' || value === 'user') return value;
+  return config.devRole === 'admin' ? 'admin' : 'user';
+}
+
+function pagination (list, opts) {
+  var o = opts || {};
+  var size = Math.max(1, Math.min(20, parseInt(o.size, 10) || 20));
+  var page = Math.max(1, parseInt(o.page, 10) || 1);
+  var total = list.length;
+  var start = (page - 1) * size;
+  return {
+    items: list.slice(start, start + size),
+    page: page,
+    size: size,
+    total: total,
+    hasMore: start + size < total
+  };
 }
 
 /** 标签名列表 */
@@ -222,16 +252,22 @@ function listExperiences (opts) {
     });
   }
   if (scene() === 'empty') list = [];
-  var total = list.length;
-  var size = o.size || 20;
-  var page = o.page || 1;
-  var start = (page - 1) * size;
-  var items = list.slice(start, start + size).map(function (e) {
+  list = list.slice().sort(function (a, b) {
+    if (o.sort === 'fav') {
+      var diff = (b.favoriteCount || 0) - (a.favoriteCount || 0);
+      if (diff) return diff;
+    }
+    var byDate = String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));
+    return byDate || (b.id - a.id);
+  });
+  var paged = pagination(list, o);
+  var items = paged.items.map(function (e) {
     return {
       id: e.id,
       title: e.title,
       summary: e.summary,
       categoryId: e.categoryId,
+      categorySlug: catSlug(e.categoryId),
       categoryName: catName(e.categoryId),
       updatedAt: e.updatedAt,
       confidence: e.confidence,
@@ -243,7 +279,8 @@ function listExperiences (opts) {
     };
   });
   return delayIfLoading(Promise.resolve({
-    items: items, page: page, size: size, total: total, source: 'demo'
+    items: items, page: paged.page, size: paged.size, total: paged.total,
+    hasMore: paged.hasMore, source: 'demo'
   }));
 }
 
@@ -259,8 +296,20 @@ function getExperience (id) {
     return Promise.reject({ code: 'NOT_FOUND', message: '这条经验不存在或已下线' });
   }
   var exp = applyScene(e);
+  var slug = exp.categorySlug || catSlug(exp.categoryId);
+  var categoryName = exp.categoryName || catName(exp.categoryId);
+  if (!exp.categorySlug || !exp.categoryName) {
+    var copy = {};
+    for (var key in exp) {
+      if (Object.prototype.hasOwnProperty.call(exp, key)) copy[key] = exp[key];
+    }
+    copy.categorySlug = slug;
+    copy.categoryName = categoryName;
+    exp = copy;
+  }
   return delayIfLoading(Promise.resolve({
     experience: exp,
+    categorySlug: slug,
     points: exp.points,
     sources: exp.sources,
     tags: tagNames(exp),
@@ -290,7 +339,7 @@ function relatedOf (expId, limit) {
   return same.concat(overlap).slice(0, limit || 3).map(function (x) {
     return {
       id: x.id, title: x.title, summary: x.summary,
-      categoryId: x.categoryId, categoryName: catName(x.categoryId),
+      categoryId: x.categoryId, categorySlug: catSlug(x.categoryId), categoryName: catName(x.categoryId),
       updatedAt: x.updatedAt, points: x.points, tagNames: tagNames(x)
     };
   });
@@ -315,7 +364,9 @@ function listSources (experienceId) {
       sources: srcs
     });
   }
-  return delayIfLoading(Promise.resolve({ groups: groups, source: 'demo' }));
+  /* ⚠️ 之前比服务端少一个 sources 字段 ——
+     两边返回结构不一致，页面换个数据源就可能取不到值。 */
+  return delayIfLoading(Promise.resolve({ groups: groups, sources: e.sources || [], source: 'demo' }));
 }
 
 /* ---------- 检索 ---------- */
@@ -398,6 +449,7 @@ function search (opts) {
         title: s.e.title,
         summary: s.e.summary,
         categoryId: s.e.categoryId,
+        categorySlug: catSlug(s.e.categoryId),
         categoryName: catName(s.e.categoryId),
         updatedAt: s.e.updatedAt,
         confidence: s.e.confidence
@@ -433,7 +485,7 @@ function getMine () {
   }
   var myFb = st.feedbacks.length;
   return delayIfLoading(Promise.resolve({
-    user: { role: 'user' },
+    user: { role: demoRole() },
     metrics: { favorites: favCount, myFeedbacks: myFb },
     source: 'demo'
   }));
@@ -467,15 +519,20 @@ function listFavorites (opts) {
       return String(st.favorites[b.id]).localeCompare(String(st.favorites[a.id]));
     });
   }
-  var items = list.map(function (e) {
+  var paged = pagination(list, o);
+  var items = paged.items.map(function (e) {
     return {
       id: e.id, title: e.title, summary: e.summary,
-      categoryId: e.categoryId, categoryName: catName(e.categoryId),
+      categoryId: e.categoryId, categorySlug: catSlug(e.categoryId), categoryName: catName(e.categoryId),
       updatedAt: e.updatedAt, points: e.points, tagNames: tagNames(e),
+      favoriteCount: e.favoriteCount, usefulCount: e.usefulCount, notUsefulCount: e.notUsefulCount,
       addedAt: st.favorites[e.id]
     };
   });
-  return delayIfLoading(Promise.resolve({ items: items, total: items.length, source: 'demo' }));
+  return delayIfLoading(Promise.resolve({
+    items: items, page: paged.page, size: paged.size, total: paged.total,
+    hasMore: paged.hasMore, source: 'demo'
+  }));
 }
 
 function addFavorite (id) {
@@ -506,12 +563,31 @@ function vote (id, useful) {
   if (off) return off;
   return requireLogin(Promise.resolve().then(function () {
     var st = loadState();
-    st.votes[id] = !!useful;
+    /* 取消投的语义：再点一次同一个 = 取消 */
+    var before = st.votes[id];
+    var now = (before === !!useful) ? null : !!useful;
+    if (now === null) delete st.votes[id];
+    else st.votes[id] = now;
     saveState(st);
     var e = expById(id);
-    var usefulCount = e ? e.usefulCount : 0;
-    var notUsefulCount = e ? e.notUsefulCount : 0;
-    return { ok: true, useful: !!useful, usefulCount: usefulCount, notUsefulCount: notUsefulCount, source: 'demo' };
+    /* ⚠️ 之前直接返回经验里的原始计数，不反映这次投票 ——
+       界面上的数字与服务端的算法对不上。
+       现在按 votes 里的实际票数重数一遍（与服务端同一口径）。 */
+    var votes = st.votes || {};
+    var usefulCount = 0;
+    var notUsefulCount = 0;
+    for (var key in votes) {
+      if (!Object.prototype.hasOwnProperty.call(votes, key)) continue;
+      if (String(key) !== String(id)) continue;
+      if (votes[key]) usefulCount++;
+      else notUsefulCount++;
+    }
+    var base = e ? Number(e.usefulCount || 0) : 0;
+    var baseBad = e ? Number(e.notUsefulCount || 0) : 0;
+    /* 演示态没有真实的 votes 表，用「种子计数 + 本机票」近似 */
+    usefulCount = base + usefulCount;
+    notUsefulCount = baseBad + notUsefulCount;
+    return { ok: true, useful: now, usefulCount: usefulCount, notUsefulCount: notUsefulCount, source: 'demo' };
   }));
 }
 
@@ -553,12 +629,37 @@ function submitFeedback (payload) {
   }));
 }
 
+/**
+ * 把处理结论的覆盖值合并回反馈列表
+ * 处理一条反馈不会去改种子数据（那会写进模块级常量），
+ * 结论记在本机存储的 feedbackOverrides 里，读取时合并回来。
+ */
+function applyFeedbackOverrides (list, st) {
+  var ov = (st && st.feedbackOverrides) || {};
+  var out = [];
+  for (var i = 0; i < list.length; i++) {
+    var f = list[i];
+    var patch = ov[String(f.id)];
+    if (!patch) { out.push(f); continue; }
+    var merged = {};
+    for (var key in f) {
+      if (Object.prototype.hasOwnProperty.call(f, key)) merged[key] = f[key];
+    }
+    for (var k2 in patch) {
+      if (Object.prototype.hasOwnProperty.call(patch, k2)) merged[k2] = patch[k2];
+    }
+    out.push(merged);
+  }
+  return out;
+}
+
 function listMyFeedbacks () {
   var off = failIfOffline();
   if (off) return off;
   var st = loadState();
   var mine = DATA_FEEDBACKS.filter(function (f) { return f.openid === 'demo-user'; })
     .concat(st.feedbacks);
+  mine = applyFeedbackOverrides(mine, st);
   if (scene() === 'empty') mine = [];
   return delayIfLoading(Promise.resolve({ items: mine, source: 'demo' }));
 }
@@ -581,18 +682,41 @@ function listAdminExperiences (opts) {
         tagNames(e).join(' ').toLowerCase().indexOf(q) >= 0;
     });
   }
+  if (o.status && o.status !== 'all') {
+    list = list.filter(function (e) { return e.status === o.status; });
+  }
   if (scene() === 'empty') list = [];
-  var items = list.map(function (e) {
+  list = list.slice().sort(function (a, b) {
+    return String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')) || (b.id - a.id);
+  });
+  var paged = pagination(list, o);
+  var items = paged.items.map(function (e) {
     return {
       id: e.id, title: e.title, summary: e.summary,
-      categoryId: e.categoryId, categoryName: catName(e.categoryId),
+      categoryId: e.categoryId, categorySlug: catSlug(e.categoryId), categoryName: catName(e.categoryId),
       status: e.status, confidence: e.confidence,
       updatedAt: e.updatedAt, reviewedAt: e.reviewedAt, nextReviewAt: e.nextReviewAt,
       points: e.points, sources: e.sources, tagNames: tagNames(e), tagIds: e.tagIds,
       keywords: e.keywords, body: e.body
     };
   });
-  return delayIfLoading(Promise.resolve({ items: items, total: items.length, source: 'demo' }));
+  return delayIfLoading(Promise.resolve({
+    items: items, page: paged.page, size: paged.size, total: paged.total,
+    hasMore: paged.hasMore, source: 'demo'
+  }));
+}
+
+function getAdminExperience (id) {
+  var off = failIfOffline();
+  if (off) return off;
+  var e = expById(id);
+  if (!e) return Promise.reject({ code: 'NOT_FOUND', message: '这条经验不存在' });
+  var copy = {};
+  for (var key in e) {
+    if (Object.prototype.hasOwnProperty.call(e, key)) copy[key] = e[key];
+  }
+  copy.categorySlug = catSlug(e.categoryId);
+  return delayIfLoading(Promise.resolve(copy));
 }
 
 /**
@@ -697,7 +821,7 @@ function listAdminFeedbacks (opts) {
   if (off) return off;
   var o = opts || {};
   var st = loadState();
-  var list = DATA_FEEDBACKS.concat(st.feedbacks);
+  var list = applyFeedbackOverrides(DATA_FEEDBACKS.concat(st.feedbacks), st);
   if (o.status && o.status !== 'all') {
     list = list.filter(function (f) { return f.status === o.status; });
   }
@@ -721,26 +845,44 @@ function resolveFeedback (id, payload) {
   if (off) return off;
   var p = payload || {};
   var status = p.status;
-  var reply = p.reply || '';
+  /* ⚠️ 不传 reply = 保留原回复（与服务端同一口径）——
+     之前无条件写 reply，改个结论就把写好的回复清成空串了。 */
+  var hasReply = p.reply !== undefined && p.reply !== null;
+  var reply = hasReply ? String(p.reply) : '';
   if (!status || ['accepted', 'ignored', 'replied'].indexOf(status) < 0) {
     return Promise.reject({ code: 'VALIDATION', message: '先选一个怎么处理这条' });
   }
-  if (status === 'replied' && !String(reply).trim()) {
+  if (status === 'replied' && !reply.trim()) {
     return Promise.reject({ code: 'VALIDATION', message: '选了「只回话」，那就写点什么吧' });
   }
   return Promise.resolve().then(function () {
     var st = loadState();
     var list = DATA_FEEDBACKS.concat(st.feedbacks);
+    /* ⚠️ 之前直接改种子数据对象（list[i].status = …），
+       那个对象是 DATA_FEEDBACKS 里的引用 ——
+       改完就写进模块级常量了，退出重进还在。
+       现在复制一份再改，改动只落在本机存储里。 */
+    var changed = null;
     for (var i = 0; i < list.length; i++) {
       if (String(list[i].id) === String(id)) {
-        list[i].status = status;
-        list[i].reply = reply;
-        list[i].repliedAt = new Date().toISOString().slice(0, 10);
+        changed = {};
+        for (var key in list[i]) {
+          if (Object.prototype.hasOwnProperty.call(list[i], key)) changed[key] = list[i][key];
+        }
+        changed.status = status;
+        if (hasReply) changed.reply = reply;
+        changed.repliedAt = new Date().toISOString().slice(0, 10);
         break;
       }
     }
-    saveState(st);
-    return { ok: true, status: status, reply: reply, source: 'demo' };
+    if (changed) {
+      /* 用与经验相同的 overrides 机制记录覆盖值 ——
+         读取时会把覆盖值合并回去（见 applyFeedbackOverrides）。 */
+      st.feedbackOverrides = st.feedbackOverrides || {};
+      st.feedbackOverrides[String(id)] = changed;
+      saveState(st);
+    }
+    return { ok: true, status: status, reply: changed ? changed.reply : reply, source: 'demo' };
   });
 }
 
@@ -830,7 +972,7 @@ function getStats () {
 function login (code) {
   return Promise.resolve({
     token: 'demo-token',
-    user: { role: 'user' },
+    user: { role: demoRole() },
     source: 'demo'
   });
 }
@@ -853,6 +995,7 @@ module.exports = {
   submitFeedback: submitFeedback,
   listMyFeedbacks: listMyFeedbacks,
   listAdminExperiences: listAdminExperiences,
+  getAdminExperience: getAdminExperience,
   saveExperience: saveExperience,
   publishExperience: publishExperience,
   unpublishExperience: unpublishExperience,

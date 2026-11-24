@@ -11,6 +11,7 @@
  *   node server/scripts/http-test.js --base=http://127.0.0.1:8080   # 打已有实例
  */
 const http = require('http');
+const config = require('../src/config');
 const db = require('../src/db');
 const vectorStore = require('../src/services/vector-store');
 const { createApp } = require('../src/app');
@@ -67,7 +68,8 @@ async function run () {
     return;
   }
 
-  const memory = hasFlag('memory') || !process.env.DATABASE_URL;
+  /* 同 reindex.js：走 config 而不是 process.env，否则 .env 里配的库会被忽略 */
+  const memory = hasFlag('memory') || !config.databaseUrl;
   await db.init({ memory: memory });
   if (memory) {
     await db.tx(async function (client) { return seed(client); });

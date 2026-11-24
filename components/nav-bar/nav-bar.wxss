@@ -14,6 +14,10 @@
   min-width: 0;
 }
 .back {
+  border: none;
+  margin: 0;
+  min-height: 88rpx;
+  line-height: 1.4;
   display: inline-flex;
   align-items: center;
   gap: 8rpx;
@@ -39,8 +43,8 @@
   gap: 16rpx;
 }
 .act {
-  width: 72rpx;
-  height: 72rpx;
+  width: 88rpx;
+  height: 88rpx;
   border-radius: 50%;
   background: var(--card);
   display: flex;
@@ -48,7 +52,10 @@
   justify-content: center;
   box-shadow: var(--sh-xs-rpx) var(--shadow-xs);
 }
-.act-img { width: 34rpx; height: 34rpx; }
+.act-img { width: 30rpx; height: 30rpx; }
+.act-state { position: absolute; right: 2rpx; bottom: 0; font-size: 22rpx; line-height: 1; }
+.act { position: relative; }
+.back::after { border: none; }
 .tap { opacity: .7; }
 
 /* button 的默认边框与背景要清掉，否则按钮框会露出来 */

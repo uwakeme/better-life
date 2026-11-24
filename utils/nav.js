@@ -38,24 +38,46 @@ function barHeight () {
   return Math.max(44, c.bottom + 6);
 }
 
+/**
+ * 屏幕宽度
+ *
+ * ⚠️ wx.getSystemInfoSync 是已废弃的同步 API ——
+ *    新基础库优先用 wx.getWindowInfo，老的再退回 getSystemInfoSync，
+ *    都没有就用 375 兜底。
+ */
+function screenWidth () {
+  var w = 0;
+  if (typeof wx !== 'undefined' && wx !== null) {
+    try {
+      if (typeof wx.getWindowInfo === 'function') {
+        var win = wx.getWindowInfo();
+        if (win && win.windowWidth) w = win.windowWidth;
+      }
+    } catch (e) {
+      /* 落到老 API */
+    }
+    if (!w && typeof wx.getSystemInfoSync === 'function') {
+      try {
+        var old = wx.getSystemInfoSync();
+        if (old && old.windowWidth) w = old.windowWidth;
+      } catch (e) {
+        /* 用默认宽度 */
+      }
+    }
+  }
+  return w || 375;
+}
+
 /** 顶栏右侧要留出的宽度，页面自己的动作按钮不能压上去 */
 function reserveRight () {
   var c = capsule();
-  var screenW = 375;
-  if (typeof wx !== 'undefined' && wx !== null &&
-      typeof wx.getSystemInfoSync === 'function') {
-    try {
-      var info = wx.getSystemInfoSync();
-      if (info && info.windowWidth) screenW = info.windowWidth;
-    } catch (e) {
-      /* 用默认宽度 */
-    }
-  }
+  var screenW = screenWidth();
   return Math.max(88, screenW - c.left + 8);
 }
 
 module.exports = {
   capsule: capsule,
   barHeight: barHeight,
-  reserveRight: reserveRight
+  reserveRight: reserveRight,
+  screenWidth: screenWidth
 };

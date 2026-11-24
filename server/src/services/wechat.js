@@ -8,6 +8,7 @@
  *      但 health 接口会如实标注「微信接口未配置」。
  */
 const config = require('../config');
+const { fetchWithTimeout } = require('../lib/http');
 
 let cachedToken = null;
 let cachedAt = 0;
@@ -24,7 +25,7 @@ async function getAccessToken () {
   const url = config.wechatApiBase + '/cgi-bin/token?grant_type=client_credential' +
     '&appid=' + encodeURIComponent(config.wechatAppid) +
     '&secret=' + encodeURIComponent(config.wechatSecret);
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url);
   const body = await res.json();
   if (!body || !body.access_token) {
     const e = new Error('取 access_token 失败：' + ((body && body.errcode) || res.status));
@@ -51,7 +52,7 @@ async function code2Session (code) {
     '&secret=' + encodeURIComponent(config.wechatSecret) +
     '&js_code=' + encodeURIComponent(String(code || '')) +
     '&grant_type=authorization_code';
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url);
   const body = await res.json();
   if (!body || !body.openid) {
     const e = new Error('登录失败：' + ((body && body.errcode) || res.status));
@@ -62,41 +63,33 @@ async function code2Session (code) {
 }
 
 /**
- * 上传图片素材，换 media_id
- * 内容安全审核只认 media_id，所以反馈附图必须先过这一道（§9.4）。
+ * 上传图片素材，换一个可下载的 url
+ *
+ * ⚠️ 用的是 media/uploadimg —— 它返回的 url 是公网可访问的，
+ *    正好是 mediaCheckAsync 需要的 media_url（官方只认 media_url，没有 media_id）。
+ *    之前还多调一次 media/uploadmaterial 去换 media_id，
+ *    那个接口是给永久素材用的，既多余又送不了审。
+ *
  * @param {Buffer} buffer 图片内容
- * @param {string} filename 文件名（决定微信把它存成什么类型的素材）
+ * @param {string} filename 文件名
  */
 async function uploadImage (buffer, filename) {
   const token = await getAccessToken();
   if (!token) {
-    /* 本地自检：没有微信环境，直接把本地路径当 media_id 之外的东西返回 */
+    /* 本地自检：没有微信环境，返回空 url —— 服务端不会假装已经过审 */
     return { mediaId: '', url: '', dev: true };
   }
   const url = config.wechatApiBase + '/cgi-bin/media/uploadimg?access_token=' + encodeURIComponent(token);
   const form = new FormData();
   form.append('media', new Blob([buffer], { type: 'image/png' }), filename || 'image.png');
-  const res = await fetch(url, { method: 'POST', body: form });
+  const res = await fetchWithTimeout(url, { method: 'POST', body: form });
   const body = await res.json();
   if (!body || !body.url) {
     const e = new Error('图片上传失败：' + ((body && body.errcode) || res.status));
     e.code = 'UPLOAD_FAILED';
     throw e;
   }
-  /* uploadimg 只给 url；送审要用 media_id，所以再走一次 media/uploadmaterial */
-  const matForm = new FormData();
-  matForm.append('media', new Blob([buffer], { type: 'image/png' }), filename || 'image.png');
-  matForm.append('type', 'image');
-  const matRes = await fetch(
-    config.wechatApiBase + '/cgi-bin/media/uploadmaterial?access_token=' + encodeURIComponent(token),
-    { method: 'POST', body: matForm }
-  );
-  const matBody = await matRes.json();
-  return {
-    mediaId: (matBody && matBody.media_id) || '',
-    url: body.url || '',
-    dev: false
-  };
+  return { mediaId: '', url: body.url, dev: false };
 }
 
 function isConfigured () {

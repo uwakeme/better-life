@@ -14,6 +14,7 @@ const expDao = require('../dao/experiences');
 const catalogDao = require('../dao/catalog');
 const vectorStore = require('./vector-store');
 const embedding = require('./embedding');
+const sdDao = require('../dao/search-documents');
 
 /** 发布前校验 —— 与设计文档 §4.1 同一套口径 */
 function validateForPublish (exp) {
@@ -57,7 +58,8 @@ function buildPointEmbeddingText (point, exp) {
 }
 
 /** 给一条经验建索引（经验文档 + 每个要点文档） */
-async function indexExperience (exp) {
+async function indexExperience (exp, opts) {
+  const options = opts || {};
   const docs = [{
     docType: 'experience',
     refId: exp.id,
@@ -78,8 +80,16 @@ async function indexExperience (exp) {
     });
   }
   const vectors = await embedding.embedDocuments(docs.map(function (d) { return d.content; }));
-  for (let i = 0; i < docs.length; i++) docs[i].embedding = vectors[i];
-  await vectorStore.upsert(docs);
+  if (!Array.isArray(vectors) || vectors.length !== docs.length) {
+    throw new Error('embedding 返回数量与文档不一致');
+  }
+  for (let i = 0; i < docs.length; i++) {
+    if (!Array.isArray(vectors[i]) || vectors[i].length !== config.embedding.dim) {
+      throw new Error('embedding 维度与配置不一致');
+    }
+    docs[i].embedding = vectors[i];
+  }
+  await vectorStore.replaceExperience(exp.id, docs, options.pointIds || []);
   return docs.length;
 }
 
@@ -106,6 +116,9 @@ async function save (payload) {
     throw e;
   }
 
+  const previous = payload.id ? await expDao.getById(payload.id) : null;
+  if (payload.id && !previous) throw Object.assign(new Error('这条经验不存在'), { code: 'NOT_FOUND' });
+  const oldPointIds = (previous && previous.points || []).map(function (point) { return point.id; });
   const id = await db.tx(async function (client) {
     return expDao.save(payload, client);
   });
@@ -115,10 +128,21 @@ async function save (payload) {
   let hint = '';
   if (exp && exp.status === 'published') {
     try {
-      await indexExperience(exp);
+      await indexExperience(exp, { pointIds: oldPointIds });
       indexed = true;
     } catch (err) {
-      /* 内容永远比索引重要 —— 发布不因为索引失败而回滚（§7.9） */
+      /* 内容永远比索引重要 —— 发布不因为索引失败而回滚（§7.9）
+         但必须留下痕迹：之前这里只写进 hint，前端又不显示 hint，
+         结果索引失败全链路静默，没人知道哪条内容搜不到。 */
+      console.error('[experiences] 建索引失败 experience=' + id + '：' +
+        (err && err.message ? err.message : err));
+      try {
+        // 内容已提交、旧要点已删除；回滚后的旧 point 索引必须显式清理。
+        await sdDao.removeExperience(id, null, oldPointIds);
+      } catch (cleanupErr) {
+        console.error('[experiences] 清理失效索引失败 experience=' + id + '：' +
+          (cleanupErr && cleanupErr.message ? cleanupErr.message : cleanupErr));
+      }
       hint = '内容已保存，但搜索索引还没建好，稍后可重建索引。';
     }
   }
@@ -147,35 +171,93 @@ async function publish (id) {
     await indexExperience(exp);
     indexed = true;
   } catch (err) {
+    console.error('[experiences] 建索引失败 experience=' + id + '：' +
+      (err && err.message ? err.message : err));
     hint = '内容已发布，但搜索索引还没建好，稍后可重建索引。';
   }
   return { id: Number(id), indexed: indexed, hint: hint };
 }
 
-/** 下线 */
+/**
+ * 下线
+ * ⚠️ 之前只改状态，不动索引 —— 下线的内容还在搜索结果里，
+ *    点进去详情接口却 404。现在下线与清索引一起做。
+ */
 async function unpublish (id) {
+  const exp = await expDao.getById(id);
+  if (!exp) {
+    const e = new Error('这条经验不存在');
+    e.code = 'NOT_FOUND';
+    throw e;
+  }
   await expDao.setStatus(id, 'draft');
+  try {
+    await removeIndex(exp);
+  } catch (err) {
+    console.error('[experiences] 清索引失败 experience=' + exp.id + '：' +
+      (err && err.message ? err.message : err));
+  }
   return { id: Number(id) };
 }
 
-/** 全量重建索引 */
-async function reindexAll () {
-  const list = await expDao.listForAdmin({ size: 500 });
-  let total = 0;
-  for (const item of list.items) {
-    if (item.status !== 'published') continue;
-    const exp = await expDao.getById(item.id);
-    if (!exp) continue;
-    try {
-      total += await indexExperience(exp);
-    } catch (e) {
-      /* 单条失败不影响其它经验 */
-    }
-  }
-  return { documents: total };
+/** 清掉一条经验的全部索引文档（经验文档 + 它的要点文档） */
+async function removeIndex (exp) {
+  const pointIds = (exp.points || []).map(function (point) { return Number(point.id); });
+  await vectorStore.removeExperience(exp.id, pointIds);
 }
 
-/** 重建一条经验的索引 */
+/**
+ * 全量重建索引
+ *
+ * ⚠️ 之前有三个问题：
+ *   1) 只取前 500 条（而且 limit 被截到 200）—— 库里的经验多起来就漏。
+ *   2) 不清旧模型与孤儿文档 —— 换 embedding 模型后旧文档还在库里。
+ *   3) 失败静默吞掉。
+ * 现在分页取全量，每条重建前先清掉它自己的旧文档。
+ */
+async function reindexAll (opts) {
+  const options = opts || {};
+  let total = 0;
+  let processed = 0;
+  let failed = 0;
+  const pageSize = 100;
+  await sdDao.deleteOrphans();
+  for (let page = 1; ; page++) {
+    const list = await expDao.listForAdmin({ status: 'published', size: pageSize, page: page });
+    const items = list.items || [];
+    if (!items.length) break;
+    const exps = await expDao.getByIds(items.map(function (item) { return item.id; }));
+    for (const exp of exps) {
+      if (options.since && dateOnly(exp.updatedAt) < options.since) continue;
+      try {
+        total += await indexExperience(exp, {
+          pointIds: exp.points.map(function (point) { return point.id; })
+        });
+        processed++;
+      } catch (e) {
+        failed++;
+        console.error('[experiences] 重建索引失败 experience=' + exp.id + '：' +
+          (e && e.message ? e.message : e));
+      }
+    }
+    if (items.length < pageSize) break;
+  }
+  return { documents: total, experiences: processed, failed: failed };
+}
+
+function dateOnly (value) {
+  if (!value) return '';
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  const match = String(value).match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : new Date(value).toISOString().slice(0, 10);
+}
+
+/**
+ * 重建一条经验的索引
+ * ⚠️ 只索引已发布的内容 —— 之前不看状态，
+ *    对草稿执行重建索引会生成「草稿-未发布-机密」这样的文档，
+ *    搜出来点进去却是 404。
+ */
 async function reindexOne (id) {
   const exp = await expDao.getById(id);
   if (!exp) {
@@ -183,8 +265,32 @@ async function reindexOne (id) {
     e.code = 'NOT_FOUND';
     throw e;
   }
-  const n = await indexExperience(exp);
+  if (exp.status !== 'published') {
+    /* 草稿不建索引 —— 但要把它的旧索引清掉（之前发布过再下线的情况） */
+    await removeIndex(exp);
+    return { id: Number(id), documents: 0, skipped: 'not-published' };
+  }
+  /* 重建前先清掉这条经验的全部文档 ——
+     要点每次保存都会整份重插、id 全部变化，
+     旧要点的索引文档没人清理，会变成孤儿。 */
+  const n = await indexExperience(exp, {
+    pointIds: exp.points.map(function (point) { return point.id; })
+  });
   return { id: Number(id), documents: n };
+}
+
+/** 先清 point 索引，再级联删除内容；两者在同一事务。 */
+async function remove (id) {
+  const exp = await expDao.getById(id);
+  if (!exp) throw Object.assign(new Error('这条经验不存在'), { code: 'NOT_FOUND' });
+  const pointIds = exp.points.map(function (point) { return Number(point.id); });
+  await db.tx(async function (client) {
+    await sdDao.removeExperience(id, client, pointIds);
+    await client.query('DELETE FROM experiences WHERE id = $1', [Number(id)]);
+  });
+  vectorStore.forget('experience', [id]);
+  vectorStore.forget('point', pointIds);
+  return { id: Number(id) };
 }
 
 module.exports = {
@@ -196,5 +302,6 @@ module.exports = {
   publish: publish,
   unpublish: unpublish,
   reindexAll: reindexAll,
-  reindexOne: reindexOne
+  reindexOne: reindexOne,
+  remove: remove
 };

@@ -192,8 +192,8 @@
 }
 .topbar .back { margin: 0; }
 .act {
-  width: 80rpx;
-  height: 80rpx;
+  width: 88rpx;
+  height: 88rpx;
   border-radius: var(--r-circle-rpx);
   background: var(--card);
   color: var(--ink-2);

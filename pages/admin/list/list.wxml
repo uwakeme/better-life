@@ -49,29 +49,50 @@
       <view class="searchbar-ic">
         <image class="chip-img" src="/assets/icons/search.png" />
       </view>
-      <input class="searchbar-in" placeholder="搜标题、结论或标签" value="{{q}}" bindinput="onQ" bindconfirm="search" confirm-type="search" />
-      <text wx:if="{{q}}" class="searchbar-x" bindtap="search">搜</text>
+      <input class="searchbar-in" placeholder="搜标题、结论或标签" aria-label="搜索管理经验" value="{{q}}" bindinput="onQ" bindconfirm="search" confirm-type="search" />
+      <button wx:if="{{q}}" class="searchbar-x" bindtap="search" hover-class="tap" aria-label="搜索管理经验">搜索</button>
     </view>
 
     <view wx:if="{{categories.length}}" class="chips">
-      <text class="pick {{cat === 0 ? 'on' : ''}}" data-id="0" bindtap="setCat" hover-class="tap">全部领域</text>
-      <text
+      <button class="pick {{cat === 0 ? 'on' : ''}}" data-id="0" bindtap="setCat" hover-class="tap" aria-role="radio" aria-checked="{{cat === 0}}" aria-label="全部领域">全部领域</button>
+      <button
         wx:for="{{categories}}"
         wx:key="id"
         class="pick {{cat === item.id ? 'on' : ''}}"
         data-id="{{item.id}}"
         bindtap="setCat"
         hover-class="tap"
-      >{{item.name}}</text>
+        aria-role="radio"
+        aria-checked="{{cat === item.id}}"
+        aria-label="{{item.name}}"
+      >{{item.name}}</button>
+    </view>
+
+    <view class="chips">
+      <button
+        wx:for="{{statusOptions}}"
+        wx:key="id"
+        class="pick {{status === item.id ? 'on' : ''}}"
+        data-id="{{item.id}}"
+        bindtap="setStatus"
+        hover-class="tap"
+        aria-role="radio"
+        aria-checked="{{status === item.id}}"
+        aria-label="{{item.name}}"
+      >{{item.name}}</button>
     </view>
 
     <view class="filter-bar">
-      <text class="filter-now">共 {{items.length}} 条</text>
+      <text class="filter-now">共 {{total}} 条 · 第 {{page}} 页</text>
       <view class="grow"></view>
       <button class="btn sm" bindtap="newExp" hover-class="tap">新建经验</button>
     </view>
 
     <state-view wx:if="{{loading}}" type="loading" />
+    <view wx:elif="{{error && items.length}}" class="notice warn">
+      <text>{{error}}</text>
+      <button class="btn sm" bindtap="retry" hover-class="tap">重试</button>
+    </view>
     <state-view
       wx:elif="{{error}}"
       type="error"
@@ -118,8 +139,20 @@
             bindtap="togglePublish"
             hover-class="tap"
           >下线</button>
+          <button
+            class="btn sm"
+            data-id="{{item.id}}"
+            data-title="{{item.title}}"
+            bindtap="remove"
+            hover-class="tap"
+          >删除</button>
         </view>
       </view>
+    </view>
+    <view wx:if="{{loadingMore}}" class="list-status" aria-role="status">正在加载更多…</view>
+    <view wx:elif="{{!loading && (page > 1 || hasMore)}}" class="list-status">
+      <button class="btn sm" bindtap="prevPage" hover-class="tap" disabled="{{page <= 1}}" aria-label="上一页">上一页</button>
+      <button class="btn sm" bindtap="nextPage" hover-class="tap" disabled="{{!hasMore}}" aria-label="下一页">下一页</button>
     </view>
   </block>
 </view>

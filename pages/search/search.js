@@ -16,6 +16,23 @@ var storage = require('../../utils/storage');
 var searchUtil = require('../../utils/search');
 var view = require('../../utils/view');
 
+/* 立场筛选项的 id ↔ 立场值 —— 筛选项在 WXML 里用序号（tag-pills 只吃数字 id），
+   立场值是 good / bad / neutral，两边靠这张表对应。 */
+var STANCE_BY_ID = { 1: 'good', 2: 'bad', 3: 'neutral' };
+
+function stanceOf (id) {
+  return STANCE_BY_ID[id] || '';
+}
+
+/** 筛选项列表放数据里，不在 WXML 里写内联数组字面量 —— 每次渲染都重建 */
+function stanceOptions () {
+  return [
+    { id: 1, name: '含推荐' },
+    { id: 2, name: '含避雷' },
+    { id: 3, name: '含中立' }
+  ];
+}
+
 Page({
   data: {
     input: '',
@@ -32,13 +49,14 @@ Page({
     showFilters: false,
     catId: 0,
     stance: '',
+    stanceOptions: [],
     categories: [],
     recent: []
   },
 
   onLoad: function (query) {
-    var q = query && query.q ? String(query.q) : '';
-    this.setData({ hist: this.readHist(), q: q, input: q });
+    var q = query && query.q ? String(query.q).slice(0, 200) : '';
+    this.setData({ hist: this.readHist(), q: q, input: q, stanceOptions: stanceOptions() });
     this.loadBase();
     if (q) this.doSearch(q);
   },
@@ -57,6 +75,9 @@ Page({
           return { id: c.id, name: c.name };
         })
       });
+    }).catch(function () {
+      /* 拿不到筛选项不该留一个未处理的 rejection ——
+         演示场景切到「断网」时这里会直接报错。默认态照样能用。 */
     });
     api.listExperiences({ size: 8 }).then(function (res) {
       var items = res.items || [];
@@ -96,9 +117,17 @@ Page({
   /* ---------- 输入与联想 ---------- */
 
   onInput: function (e) {
-    var val = e.detail.value;
+    var val = String(e.detail.value || '').slice(0, 200);
+    if (!val.trim()) {
+      this.clearInput();
+      return;
+    }
     this.setData({ input: val });
     this.debouncedSuggest(val);
+  },
+
+  onConfirm: function (e) {
+    this.doSearch(e.detail.value);
   },
 
   onDebouncedSuggest: function (val) {
@@ -141,25 +170,47 @@ Page({
   },
 
   clearInput: function () {
-    this.setData({ input: '', q: '', suggest: [], searched: false, cards: [], error: '', timeout: false });
+    this.searchSeq = (this.searchSeq || 0) + 1;
+    this.setData({
+      input: '', q: '', suggest: [], searched: false, loading: false,
+      cards: [], error: '', timeout: false, mode: ''
+    });
+  },
+
+  invalidateSearch: function () {
+    this.searchSeq = (this.searchSeq || 0) + 1;
+    this.setData({ loading: false, searched: false, cards: [], error: '', timeout: false, mode: '' });
+  },
+
+  refreshSearch: function () {
+    if (String(this.data.q || '').trim()) this.doSearch(this.data.q);
+    else this.invalidateSearch();
   },
 
   /* ---------- 检索 ---------- */
 
   doSearch: function (q) {
     var self = this;
-    var key = String(q || '').trim();
-    if (!key) return;
+    var key = String(q || '').trim().slice(0, 200);
+    if (!key) {
+      this.invalidateSearch();
+      return Promise.resolve();
+    }
     this.setData({ q: key, input: key, searched: true, loading: true, error: '', timeout: false, suggest: [] });
     var body = { query: key, limit: 20 };
     if (this.data.catId) body.categoryIds = [this.data.catId];
     if (this.data.stance) body.stance = this.data.stance;
+    /* 请求序号 —— 连续搜索时，先发出的请求可能后返回，
+       那样旧结果会覆盖掉新结果。序号小的响应直接丢掉。 */
+    this.searchSeq = (this.searchSeq || 0) + 1;
+    var seq = this.searchSeq;
     return api.search(body).then(function (res) {
+      if (seq !== self.searchSeq) return;   /* 已经有更新的请求了 */
       var items = res.items || [];
       var cards = [];
       for (var i = 0; i < items.length; i++) {
         var hit = view.hitLabel(items[i].matchedOn);
-        cards.push(view.cardView(items[i].experience, hit));
+        cards.push(view.cardView(items[i].experience, hit, items[i].highlights));
       }
       /* 只有提交过的查询才进历史 */
       var hist = self.writeHist(key);
@@ -171,6 +222,7 @@ Page({
         hist: hist
       });
     }).catch(function (err) {
+      if (seq !== self.searchSeq) return;   /* 过期响应 */
       var code = err && err.code;
       self.setData({
         loading: false,
@@ -193,17 +245,20 @@ Page({
 
   onCat: function (e) {
     this.setData({ catId: Number(e.detail.value || 0) });
-    this.doSearch(this.data.q);
+    this.refreshSearch();
   },
 
   onStance: function (e) {
-    this.setData({ stance: e.detail.value || '' });
-    this.doSearch(this.data.q);
+    /* ⚠️ tag-pills 回传的是选项 id（1/2/3），不是立场值。
+       之前直接把它当 stance 发给服务端，服务端拿 '1' 去匹配要点立场，
+       结果必然为空 —— 选了筛选就变成零结果。 */
+    this.setData({ stance: stanceOf(Number(e.detail.value || 0)) });
+    this.refreshSearch();
   },
 
   clearFilters: function () {
     this.setData({ catId: 0, stance: '' });
-    this.doSearch(this.data.q);
+    this.refreshSearch();
   },
 
   openExp: function (e) {

@@ -1,6 +1,8 @@
-<view class="card {{card.color}}" bindtap="onTap" hover-class="tap">
-  <view class="card-t">{{card.title}}</view>
-  <view class="card-s">{{card.summary}}</view>
+<button class="card {{card.color}}" bindtap="onTap" hover-class="tap" aria-label="查看经验：{{card.title}}">
+  <view wx:if="{{card.titleParts.length}}" class="card-t"><text wx:for="{{card.titleParts}}" wx:key="index" class="{{item.on ? 'keyword' : ''}}">{{item.text}}</text></view>
+  <view wx:else class="card-t">{{card.title}}</view>
+  <view wx:if="{{card.summaryParts.length}}" class="card-s"><text wx:for="{{card.summaryParts}}" wx:key="index" class="{{item.on ? 'keyword' : ''}}">{{item.text}}</text></view>
+  <view wx:else class="card-s">{{card.summary}}</view>
   <view class="card-m">
     <text wx:if="{{card.categoryName}}" class="chip">{{card.categoryName}}</text>
     <text wx:if="{{card.stanceText}}" class="chip">{{card.stanceText}}</text>
@@ -8,4 +10,4 @@
     <text wx:for="{{card.tags}}" wx:key="*this" class="chip">{{item}}</text>
     <text wx:if="{{card.hit}}" class="chip hit">{{card.hit}}</text>
   </view>
-</view>
+</button>

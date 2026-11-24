@@ -16,6 +16,38 @@ const INT_COLUMNS = new Set([
   'usefulCount', 'notUsefulCount', 'feedbackCount'
 ]);
 
+/**
+ * 日期列：统一转成 YYYY-MM-DD 字符串
+ *
+ * ⚠️ 数据库的 DATE 列会被驱动解析成 Date 对象，再序列化到接口里
+ *    就变成 '2026-10-12T00:00:00.000Z' 这种带时区的串 ——
+ *    界面直接显示这串，编辑页的日期输入框里也塞着它。
+ *    真库上还会因为会话时区差一天。
+ *
+ * 在这里统一处理，而不是依赖各驱动的类型解析器：
+ *    pg 的 setTypeParser 管得到真库，管不到 pg-mem（走自己的类型推断）。
+ *    转换层是两边共用的唯一出口，在这里切最稳。
+ */
+const DATE_COLUMNS = new Set([
+  'reviewedAt', 'nextReviewAt', 'publishedAt', 'createdAt', 'updatedAt',
+  'repliedAt', 'mediaCheckedAt', 'lastSeenAt'
+]);
+
+/** Date / 日期串 → YYYY-MM-DD */
+function toDateOnly (value) {
+  if (value === null || value === undefined || value === '') return value;
+  if (value instanceof Date) {
+    if (isNaN(value.getTime())) return value;
+    return value.toISOString().slice(0, 10);
+  }
+  const s = String(value);
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return value;
+  return d.toISOString().slice(0, 10);
+}
+
 /** snake_case → camelCase */
 function camel (key) {
   return String(key).replace(/_([a-z0-9])/g, function (_, c) {
@@ -53,6 +85,10 @@ function toCamel (row, opts) {
         return isNaN(n) ? v : n;
       });
     }
+    /* 日期列统一成 YYYY-MM-DD */
+    if (DATE_COLUMNS.has(name)) {
+      value = toDateOnly(value);
+    }
     out[name] = value;
   }
   return out;
@@ -85,5 +121,7 @@ module.exports = {
   toCamel: toCamel,
   toCamelList: toCamelList,
   toRow: toRow,
-  INT_COLUMNS: INT_COLUMNS
+  toDateOnly: toDateOnly,
+  INT_COLUMNS: INT_COLUMNS,
+  DATE_COLUMNS: DATE_COLUMNS
 };

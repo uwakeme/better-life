@@ -8,7 +8,8 @@
 const express = require('express');
 const config = require('../config');
 const searchService = require('../services/search');
-const { requireAuth, userKey, rateLimit } = require('../middleware/auth');
+const { requireAuth, userKey } = require('../middleware/auth');
+const { rateLimit } = require('../middleware/rate-limit');
 
 const router = express.Router();
 

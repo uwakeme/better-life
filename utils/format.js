@@ -11,15 +11,52 @@ var TODAY = '2026-11-19';
 
 /**
  * 相对时间：小于 7 天说「N 天前」，小于 30 天说「N 周前」，再往后说「N 个月前」
+ *
+ * ⚠️ 基准日期不能用写死的 TODAY —— 服务端来的数据也走这个函数，
+ *    写死的话 '2026-11-19' 永远显示「今天」。
+ *    现在：服务端数据用真实当前时间，演示数据才用固定基准日。
  */
-function ago (dateStr) {
+function ago (dateStr, isDemo) {
   if (!dateStr) return '';
-  var days = Math.round((Date.parse(TODAY) - Date.parse(dateStr)) / 86400000);
-  if (isNaN(days)) return '';
+  var base = isDemo ? Date.parse(TODAY) : Date.now();
+  var t = Date.parse(dateStr);
+  if (isNaN(t)) return '';
+  var days = Math.round((base - t) / 86400000);
   if (days <= 0) return '今天';
   if (days < 7) return days + ' 天前';
   if (days < 30) return Math.round(days / 7) + ' 周前';
   return Math.round(days / 30) + ' 个月前';
+}
+
+/**
+ * 日期格式化：统一成 YYYY-MM-DD
+ *
+ * ⚠️ 服务端的 DATE 列曾经被 pg 解析成 Date 对象再序列化，
+ *    界面直接显示出 '2026-10-12T00:00:00.000Z' 这种带时区的串。
+ *    这里统一截到日期部分 —— 展示的地方不该出现时间与时区。
+ */
+function date (value) {
+  if (!value) return '';
+  if (value instanceof Date) {
+    if (isNaN(value.getTime())) return '';
+    return value.toISOString().slice(0, 10);
+  }
+  var s = String(value);
+  var m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+  var d = new Date(s);
+  if (isNaN(d.getTime())) return '';
+  return d.toISOString().slice(0, 10);
+}
+
+/** 日期 + 时间（带时区转成本地时间）—— 需要精确到时的场合用 */
+function dateTime (value) {
+  if (!value) return '';
+  var d = value instanceof Date ? value : new Date(String(value));
+  if (isNaN(d.getTime())) return date(value);
+  var pad = function (n) { return n < 10 ? '0' + n : String(n); };
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+    ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
 }
 
 /** 来源类型中文口径（界面里不出现英文枚举） */
@@ -107,6 +144,8 @@ function tagText (names) {
 module.exports = {
   TODAY: TODAY,
   ago: ago,
+  date: date,
+  dateTime: dateTime,
   number: number,
   host: host,
   tagText: tagText,

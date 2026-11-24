@@ -10,7 +10,7 @@
     "postcss": true,
     "minified": true,
     "urlCheck": false,
-    "ignoreDevUnusedFiles": true,
+    "ignoreDevUnusedFiles": false,
     "checkInvalidKey": true
   },
   "packOptions": {

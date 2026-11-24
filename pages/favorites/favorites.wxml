@@ -4,23 +4,30 @@
   <view class="filter-bar">
     <text class="filter-now">共 {{total}} 条</text>
     <view class="grow"></view>
-    <text class="pill {{sort === 'added' ? 'on' : ''}}" data-k="added" bindtap="setSort" hover-class="tap">最近收藏</text>
-    <text class="pill {{sort === 'updated' ? 'on' : ''}}" data-k="updated" bindtap="setSort" hover-class="tap">最近更新</text>
+    <button class="pill {{sort === 'added' ? 'on' : ''}}" data-k="added" bindtap="setSort" hover-class="tap" aria-role="radio" aria-checked="{{sort === 'added'}}" aria-label="按最近收藏排序">最近收藏</button>
+    <button class="pill {{sort === 'updated' ? 'on' : ''}}" data-k="updated" bindtap="setSort" hover-class="tap" aria-role="radio" aria-checked="{{sort === 'updated'}}" aria-label="按最近更新排序">最近更新</button>
   </view>
 
   <view wx:if="{{categories.length}}" class="chips">
-    <text class="pick {{catId === 0 ? 'on' : ''}}" data-id="0" bindtap="setCat" hover-class="tap">全部领域</text>
-    <text
+    <button class="pick {{catId === 0 ? 'on' : ''}}" data-id="0" bindtap="setCat" hover-class="tap" aria-role="radio" aria-checked="{{catId === 0}}" aria-label="全部领域">全部领域</button>
+    <button
       wx:for="{{categories}}"
       wx:key="id"
       class="pick {{catId === item.id ? 'on' : ''}}"
       data-id="{{item.id}}"
       bindtap="setCat"
       hover-class="tap"
-    >{{item.name}}</text>
+      aria-role="radio"
+      aria-checked="{{catId === item.id}}"
+      aria-label="{{item.name}}"
+    >{{item.name}}</button>
   </view>
 
   <state-view wx:if="{{loading}}" type="loading" />
+  <view wx:elif="{{error && cards.length}}" class="notice warn">
+    <text>{{error}}</text>
+    <button class="btn sm" bindtap="retry" hover-class="tap">重试</button>
+  </view>
   <state-view
     wx:elif="{{error}}"
     type="error"
@@ -40,4 +47,9 @@
   <view wx:else class="list">
     <experience-card wx:for="{{cards}}" wx:key="id" card="{{item}}" bind:open="openExp" />
   </view>
+  <view wx:if="{{loadingMore}}" class="list-status" aria-role="status">正在加载更多…</view>
+  <view wx:elif="{{hasMore && !loading && !error}}" class="list-status">
+    <button class="btn sm" bindtap="onReachBottom" hover-class="tap">加载更多</button>
+  </view>
+  <view wx:elif="{{!loading && cards.length}}" class="list-status">已经到底了</view>
 </view>

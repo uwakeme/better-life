@@ -1,16 +1,16 @@
-<view class="point" bindtap="onToggle">
-  <view class="point-h">
+<view class="point">
+  <button class="point-h" bindtap="onToggle" hover-class="tap" aria-expanded="{{open}}" aria-controls="point-body-{{point.id}}" aria-label="{{point.title}}，{{open ? '收起要点' : '展开要点'}}">
     <text class="point-n">{{point.index + 1}}</text>
     <text class="point-t">{{point.title}}</text>
     <stance-badge stance="{{point.stanceView}}" />
-  </view>
-  <view wx:if="{{open}}" class="point-b">
+  </button>
+  <view wx:if="{{open}}" id="point-body-{{point.id}}" class="point-b">
     <view wx:if="{{point.detail}}" class="point-d">{{point.detail}}</view>
     <view wx:if="{{point.appliesTo}}" class="point-a">适用：{{point.appliesTo}}</view>
-    <view class="point-sum">
+    <button class="point-sum" bindtap="onToggle" hover-class="tap" aria-expanded="{{open}}" aria-controls="point-body-{{point.id}}" aria-label="收起要点：{{point.title}}">
       <text>依据 {{point.sourceCount}} 条</text>
       <text class="point-sum-x">收起</text>
-    </view>
+    </button>
     <view class="point-src">
       <block wx:if="{{point.sources.length}}">
         <source-item wx:for="{{point.sources}}" wx:key="id" source="{{item}}" compact bind:copy="onCopy" />

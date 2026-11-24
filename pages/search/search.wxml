@@ -10,12 +10,14 @@
       value="{{input}}"
       placeholder="搜一条用得上的经验"
       placeholder-class="ph"
+      aria-label="搜索生活经验"
+      maxlength="200"
       confirm-type="search"
       bindinput="onInput"
       bindfocus="onFocus"
-      bindconfirm="doSearch"
+      bindconfirm="onConfirm"
     />
-    <text wx:if="{{input}}" class="searchbar-x" bindtap="clearInput">✕</text>
+    <button wx:if="{{input}}" class="searchbar-x" bindtap="clearInput" hover-class="tap" aria-label="清空搜索输入">✕</button>
   </view>
 
   <!-- 降级提示：mode 不为 hybrid 就如实说明（§7.7） -->
@@ -33,35 +35,38 @@
   <view wx:if="{{suggest.length}}" class="suggest">
     <view class="suggest-t">
       <text>候选词</text>
-      <text class="suggest-s">来自本机历史与已收录内容</text>
+      <text class="suggest-s">停顿 300 毫秒显示，按搜索键才检索</text>
     </view>
-    <view
+    <button
       wx:for="{{suggest}}"
       wx:key="text"
       class="suggest-i"
       data-text="{{item.text}}"
       bindtap="pickSuggest"
       hover-class="tap"
+      aria-label="搜索：{{item.text}}"
     >
       <image class="chip-img" src="/assets/icons/search.png" />
       <text>{{item.text}}</text>
-    </view>
+    </button>
   </view>
 
   <!-- 默认态：本机历史 + 最近收录 -->
   <block wx:if="{{!searched}}">
     <view wx:if="{{hist.length}}" class="sec-h">
       <view class="sec-h-t">搜索历史</view>
-      <view class="sec-h-s" bindtap="clearHist" hover-class="tap">清空</view>
+      <button class="sec-h-s touch" bindtap="clearHist" hover-class="tap" aria-label="清空本机搜索历史">清空</button>
     </view>
     <view wx:if="{{hist.length}}" class="chips">
-      <text
+      <button
         wx:for="{{hist}}"
         wx:key="*this"
-        class="chip tap"
+        class="chip chip-btn"
         data-text="{{item}}"
         bindtap="pickHist"
-      >{{item}}</text>
+        hover-class="tap"
+        aria-label="搜索历史：{{item}}"
+      >{{item}}</button>
     </view>
     <view wx:if="{{recent.length}}" class="sec-h">
       <view class="sec-h-t">最近收录</view>
@@ -74,14 +79,14 @@
   <!-- 结果态 -->
   <block wx:else>
     <view class="filter-bar">
-      <text class="filter-now" bindtap="toggleFilters" hover-class="tap">
+      <button class="filter-now touch" bindtap="toggleFilters" hover-class="tap" aria-expanded="{{showFilters}}" aria-controls="search-filters">
         {{catId ? '已按领域筛选' : (stance ? '已按立场筛选' : '筛选：领域 / 立场')}}
-      </text>
+      </button>
       <view class="grow"></view>
-      <text wx:if="{{catId || stance}}" class="chip tap" bindtap="clearFilters">清空筛选</text>
+      <button wx:if="{{catId || stance}}" class="chip chip-btn" bindtap="clearFilters" hover-class="tap" aria-label="清空搜索筛选">清空筛选</button>
     </view>
 
-    <view wx:if="{{showFilters}}" class="filter-panel">
+    <view wx:if="{{showFilters}}" id="search-filters" class="filter-panel">
       <tag-pills
         items="{{categories}}"
         value="{{catId}}"
@@ -89,7 +94,7 @@
         bind:change="onCat"
       />
       <tag-pills
-        items="{{[{ id: 1, name: '含推荐' }, { id: 2, name: '含避雷' }, { id: 3, name: '含中立' }]}}"
+        items="{{stanceOptions}}"
         value="{{stance === 'good' ? 1 : (stance === 'bad' ? 2 : (stance === 'neutral' ? 3 : 0))}}"
         label="按立场筛选"
         bind:change="onStance"

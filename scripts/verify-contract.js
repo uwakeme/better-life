@@ -141,7 +141,12 @@ function frontendCalls () {
     const open = m.index + m[0].length - 1;
     const args = readArgs(text, open);
     if (!args.length) continue;
-    const p = buildPath(args[0]);
+    let pathExpr = args[0];
+    if (m[1] === 'upload' && args[1]) {
+      const target = args[1].match(/\bpath\s*:\s*(['"`])([^'"`]+)\1/);
+      if (target) pathExpr = JSON.stringify(target[2]);
+    }
+    const p = buildPath(pathExpr);
     if (!p) continue;
     out.push({ verb: verb, path: norm(p), raw: (m[1] + ' ' + p).slice(0, 70) });
   }
@@ -180,7 +185,7 @@ function request (base, method, path, body, token) {
       res.on('end', function () {
         let parsed = null;
         try { parsed = JSON.parse(raw); } catch (e) { parsed = null; }
-        resolve({ status: res.statusCode, body: parsed });
+        resolve({ status: res.statusCode, headers: res.headers, body: parsed });
       });
     });
     req.on('error', reject);
@@ -227,7 +232,10 @@ async function main () {
 
   group('响应包');
   const db = require('../server/src/db');
+  const searchDocuments = require('../server/src/dao/search-documents');
+  const experienceService = require('../server/src/services/experiences');
   const { createApp } = require('../server/src/app');
+  const tokenUtil = require('../server/src/services/token');
   const { seed } = require('../server/scripts/seed');
   await db.init({ memory: true });
   await db.tx(async function (client) { return seed(client); });
@@ -241,6 +249,19 @@ async function main () {
     check('成功响应是 { ok, data }', r.body && r.body.ok === true && !!r.body.data,
       JSON.stringify(r.body).slice(0, 120));
     check('data 里就是页面要用的字段', !!(r.body.data.categories && r.body.data.tags));
+    check('响应带可追踪的请求 ID', typeof r.headers['x-request-id'] === 'string' && r.headers['x-request-id'].length > 0);
+    r = await request(base, 'GET', '/api/experiences?size=1');
+    const list = r.body.data || {};
+    check('列表返回真实总数与分页信息', list.total > 1 && list.page === 1 && list.size === 1);
+    check('列表卡片只需要立场计数', list.items.length === 1 && list.items[0].stanceCounts &&
+      !Array.isArray(list.items[0].points));
+    r = await request(base, 'GET', '/api/experiences?size=100');
+    const mostFavorited = Math.max.apply(null, r.body.data.items.map(function (x) { return x.favoriteCount; }));
+    r = await request(base, 'GET', '/api/experiences?sort=fav&size=1');
+    check('公开列表支持按收藏数在服务端排序', r.body.data.items.length === 1 &&
+      r.body.data.items[0].favoriteCount === mostFavorited);
+    r = await request(base, 'GET', '/api/experiences/1');
+    check('详情返回稳定领域 slug', !!(r.body.data.experience && r.body.data.experience.categorySlug));
     r = await request(base, 'GET', '/api/nope');
     check('失败响应是 { ok:false, error:{code,message} }',
       r.body && r.body.ok === false && !!(r.body.error && r.body.error.code && r.body.error.message),
@@ -250,10 +271,67 @@ async function main () {
     r = await request(base, 'POST', '/api/search', { query: '洗发水' });
     const items = (r.body.data && r.body.data.items) || [];
     check('items 是数组', Array.isArray(items));
+    check('检索确实返回了非空结果', items.length > 0);
     check('每条都是 { experience, matchedOn }', items.every(function (x) {
       return x.experience && x.experience.id && x.experience.title && Array.isArray(x.matchedOn);
     }), JSON.stringify(items[0] || {}).slice(0, 160));
+    check('每条都带摘要高亮片段', items.every(function (x) { return Array.isArray(x.highlights && x.highlights.summary); }));
     check('mode 与前端读法一致', typeof (r.body.data || {}).mode === 'string');
+
+    group('登录态分页');
+    const userToken = tokenUtil.sign({ openid: 'dev-user', role: 'user' });
+    r = await request(base, 'GET', '/api/me/favorites?page=1&size=1', undefined, userToken);
+    check('收藏列表返回真实总数与分页信息', r.body.data.total >= 3 &&
+      r.body.data.page === 1 && r.body.data.size === 1 && r.body.data.items.length === 1);
+    const firstFavoriteId = r.body.data.items[0].id;
+    r = await request(base, 'GET', '/api/me/favorites?page=2&size=1', undefined, userToken);
+    check('收藏第二页不是重复第一页', r.body.data.items.length === 1 &&
+      r.body.data.items[0].id !== firstFavoriteId);
+    r = await request(base, 'GET', '/api/me', undefined, userToken);
+    check('我的页收藏指标使用真实总数', r.body.data.metrics.favorites >= 3);
+
+    const adminToken = tokenUtil.sign({ openid: 'dev-admin', role: 'admin' });
+    r = await request(base, 'GET', '/api/admin/experiences?page=1&size=1', undefined, adminToken);
+    check('管理列表返回真实总数与分页信息', r.body.data.total > 1 &&
+      r.body.data.page === 1 && r.body.data.size === 1 && r.body.data.items.length === 1);
+    const firstAdminId = r.body.data.items[0].id;
+    r = await request(base, 'GET', '/api/admin/experiences?page=2&size=1', undefined, adminToken);
+    check('管理第二页不是重复第一页', r.body.data.items.length === 1 &&
+      r.body.data.items[0].id !== firstAdminId);
+
+    group('索引生命周期');
+    r = await request(base, 'GET', '/api/admin/experiences/1', undefined, adminToken);
+    const editable = r.body.data;
+    const oldPointIds = editable.points.map(function (p) { return p.id; });
+    editable.nextReviewAt = null;
+    r = await request(base, 'PUT', '/api/admin/experiences/1', editable, adminToken);
+    check('更新已发布经验成功', r.status === 200 && r.body.ok === true, JSON.stringify(r.body));
+    r = await request(base, 'GET', '/api/admin/experiences/1', undefined, adminToken);
+    check('下次复核日期可以显式清空', r.body.data.nextReviewAt === null,
+      JSON.stringify(r.body.data.nextReviewAt));
+    const currentPoints = r.body.data.points.map(function (p) { return p.id; });
+    let docs = await db.query("SELECT ref_id FROM search_documents WHERE doc_type = 'point'");
+    const indexedPoints = new Set(docs.rows.map(function (d) { return Number(d.ref_id); }));
+    check('保存后旧要点索引已清理', oldPointIds.every(function (id) { return !indexedPoints.has(id); }));
+    check('保存后当前要点全部有索引', currentPoints.every(function (id) { return indexedPoints.has(id); }));
+
+    await db.query('DELETE FROM search_documents WHERE doc_type = $1 AND ref_id = $2',
+      ['point', currentPoints[0]]);
+    const missingIndex = await searchDocuments.listMissingIndex();
+    check('缺失要点索引也能被检测到', missingIndex.some(function (e) { return Number(e.id) === 1; }));
+    await experienceService.reindexOne(1);
+    docs = await db.query("SELECT ref_id FROM search_documents WHERE doc_type = 'point'");
+    check('单条重建能补齐缺失索引', docs.rows.some(function (d) { return Number(d.ref_id) === currentPoints[0]; }));
+
+    r = await request(base, 'DELETE', '/api/admin/experiences/1', undefined, adminToken);
+    check('删除经验成功', r.status === 200 && r.body.ok === true, JSON.stringify(r.body));
+    docs = await db.query('SELECT doc_type, ref_id FROM search_documents');
+    check('删除后没有经验索引残留', !docs.rows.some(function (d) {
+      return d.doc_type === 'experience' && Number(d.ref_id) === 1;
+    }));
+    check('删除后没有要点索引残留', !docs.rows.some(function (d) {
+      return d.doc_type === 'point' && currentPoints.indexOf(Number(d.ref_id)) >= 0;
+    }));
   } finally {
     await new Promise(function (resolve) { server.close(resolve); });
     await db.close();

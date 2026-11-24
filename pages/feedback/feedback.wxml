@@ -24,15 +24,18 @@
 
       <view class="field">
         <view class="field-l">反馈类型<text class="req">*</text></view>
-        <view class="fb-choices">
-          <text
+        <view class="fb-choices" aria-role="radiogroup" aria-label="反馈类型">
+          <button
             wx:for="{{kinds}}"
             wx:key="key"
             class="pick {{kind === item.key ? 'on' : ''}}"
             data-k="{{item.key}}"
             bindtap="setKind"
             hover-class="tap"
-          >{{item.name}}</text>
+            aria-role="radio"
+            aria-checked="{{kind === item.key}}"
+            aria-label="{{item.name}}"
+          >{{item.name}}</button>
         </view>
       </view>
 
@@ -42,29 +45,33 @@
           class="textarea"
           placeholder="哪里不对、缺了什么、想问什么，写具体一点更容易被处理。"
           value="{{content}}"
+          aria-label="反馈内容"
+          aria-describedby="feedback-content-help"
           bindinput="onContent"
           maxlength="-1"
           auto-height="{{false}}"
         />
-        <view wx:if="{{hint}}" class="fb-hint">{{hint}}</view>
+        <view id="feedback-content-help" class="fb-tip">写清哪里不对、缺了什么或想问什么。</view>
+        <view wx:if="{{hint}}" class="fb-hint" aria-role="alert">{{hint}}</view>
       </view>
 
       <view class="field">
         <view class="field-l">附图（最多 {{maxImages}} 张）</view>
         <view class="imgs">
-          <view wx:for="{{images}}" wx:key="url" class="img">
-            <image class="img-pic" src="{{item.url}}" mode="aspectFill" />
-            <view class="img-x" data-i="{{index}}" bindtap="removeImage">×</view>
+          <view wx:for="{{images}}" wx:key="index" class="img">
+            <image class="img-pic" src="{{item.url}}" mode="aspectFill" aria-label="反馈附图{{index + 1}}" />
+            <button class="img-x" data-i="{{index}}" bindtap="removeImage" disabled="{{uploading || submitting}}" hover-class="tap" aria-label="移除附图{{index + 1}}">×</button>
           </view>
-          <view wx:if="{{images.length < maxImages}}" class="img-add" bindtap="chooseImage" hover-class="tap">
-            ＋ 图片
-          </view>
+          <button wx:if="{{images.length < maxImages && !uploading}}" class="img-add" bindtap="chooseImage" disabled="{{pending || submitting}}" hover-class="tap" aria-label="选择反馈附图">
+            {{pending ? '选图中' : '＋ 图片'}}
+          </button>
+          <text wx:if="{{uploading}}" class="img-max" aria-role="status">图片上传中…</text>
         </view>
         <view class="fb-tip">带图的反馈会先落库、图片标为审核中，审核通过后才展示图片。</view>
       </view>
 
       <view class="actions">
-        <button class="btn pri" bindtap="submit" hover-class="tap" disabled="{{submitting}}">
+        <button class="btn pri" bindtap="submit" hover-class="tap" disabled="{{submitting || uploading || pending}}">
           {{submitting ? '提交中' : '提交反馈'}}
         </button>
       </view>

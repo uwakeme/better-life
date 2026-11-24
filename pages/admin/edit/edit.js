@@ -40,6 +40,17 @@ function newClientId (prefix) {
   return prefix + Date.now() + '_' + seq;
 }
 
+/** 日期统一成 YYYY-MM-DD（服务端 DATE 列可能带时间部分） */
+function dateOnly (value) {
+  if (!value) return '';
+  var s = String(value);
+  var m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+  var d = new Date(s);
+  if (isNaN(d.getTime())) return '';
+  return d.toISOString().slice(0, 10);
+}
+
 Page({
   data: {
     allowed: false,
@@ -52,6 +63,10 @@ Page({
     body: '',
     categoryId: 1,
     keywordText: '',
+    /* 核查日期与下次复核日期 —— 之前没有入口，
+       管理端的「待复核」指标在界面上消不掉。 */
+    reviewedAt: '',
+    nextReviewAt: '',
     tagIds: [],
     tagView: [],
     points: [],
@@ -118,7 +133,8 @@ Page({
           sourceType: srcs[j].sourceType || 'article',
           platform: srcs[j].platform || '',
           author: srcs[j].author || '',
-          publishedAt: srcs[j].publishedAt || '',
+          /* 日期统一成 YYYY-MM-DD —— 服务端可能带时间部分 */
+          publishedAt: dateOnly(srcs[j].publishedAt) || '',
           note: srcs[j].note || '',
           pointIds: ids
         });
@@ -131,6 +147,9 @@ Page({
         body: e.body || '',
         categoryId: Number(e.categoryId || 1),
         keywordText: kws.join('、'),
+        /* 日期统一成 YYYY-MM-DD —— 服务端 DATE 列可能带时间部分 */
+        reviewedAt: dateOnly(e.reviewedAt),
+        nextReviewAt: dateOnly(e.nextReviewAt),
         tagIds: (e.tagIds || []).slice(),
         points: points,
         sources: sources
@@ -147,12 +166,21 @@ Page({
    * WXML 不做数组方法调用。
    */
   refresh: function () {
+    this.refreshTags();
+    this.refreshSources();
+  },
+
+  refreshTags: function () {
     var tagIds = this.data.tagIds || [];
     var tagView = [];
     for (var i = 0; i < (this.data.tags || []).length; i++) {
       var t = this.data.tags[i];
       tagView.push({ id: t.id, name: t.name, on: tagIds.indexOf(t.id) >= 0 });
     }
+    this.setData({ tagView: tagView });
+  },
+
+  refreshSources: function () {
     var points = this.data.points || [];
     var sources = [];
     for (var j = 0; j < (this.data.sources || []).length; j++) {
@@ -173,7 +201,26 @@ Page({
       next.linkChoices = choices;
       sources.push(next);
     }
-    this.setData({ tagView: tagView, sources: sources });
+    this.setData({ sources: sources });
+  },
+
+  scheduleSourceLabels: function () {
+    var self = this;
+    if (this.sourceLabelTimer) clearTimeout(this.sourceLabelTimer);
+    this.sourceLabelTimer = setTimeout(function () {
+      self.sourceLabelTimer = null;
+      self.refreshSources();
+    }, 300);
+  },
+
+  onPointTitleBlur: function () {
+    if (this.sourceLabelTimer) clearTimeout(this.sourceLabelTimer);
+    this.sourceLabelTimer = null;
+    this.refreshSources();
+  },
+
+  onUnload: function () {
+    if (this.sourceLabelTimer) clearTimeout(this.sourceLabelTimer);
   },
 
   /* ---------- 基本字段 ---------- */
@@ -182,6 +229,8 @@ Page({
   onSummary: function (e) { this.setData({ summary: e.detail.value }); },
   onBody: function (e) { this.setData({ body: e.detail.value }); },
   onKeywords: function (e) { this.setData({ keywordText: e.detail.value }); },
+  onReviewedAt: function (e) { this.setData({ reviewedAt: e.detail.value }); },
+  onNextReviewAt: function (e) { this.setData({ nextReviewAt: e.detail.value }); },
 
   setCategory: function (e) {
     this.setData({ categoryId: Number(e.currentTarget.dataset.id || 1) });
@@ -193,7 +242,11 @@ Page({
     var at = list.indexOf(id);
     if (at >= 0) list.splice(at, 1); else list.push(id);
     this.setData({ tagIds: list });
-    this.refresh();
+    var patch = {};
+    for (var i = 0; i < this.data.tagView.length; i++) {
+      patch['tagView[' + i + '].on'] = list.indexOf(this.data.tagView[i].id) >= 0;
+    }
+    this.setData(patch);
   },
 
   /* ---------- 要点 ---------- */
@@ -215,53 +268,48 @@ Page({
     var i = Number(e.currentTarget.dataset.i || 0);
     var points = this.data.points.slice();
     var removed = points[i];
+    if (!removed) return;
     points.splice(i, 1);
-    /* 删了要点，挂在它上面的依据也要解绑 —— 否则会留下悬空引用 */
-    var sources = [];
+    var patch = { points: points };
     for (var j = 0; j < this.data.sources.length; j++) {
-      var s = this.data.sources[j];
-      var ids = (s.pointIds || []).slice();
+      var ids = (this.data.sources[j].pointIds || []).slice();
       var at = ids.indexOf(removed.id);
-      if (at >= 0) ids.splice(at, 1);
-      var next = {};
-      for (var key in s) {
-        if (Object.prototype.hasOwnProperty.call(s, key)) next[key] = s[key];
+      if (at >= 0) {
+        ids.splice(at, 1);
+        patch['sources[' + j + '].pointIds'] = ids;
       }
-      next.pointIds = ids;
-      sources.push(next);
     }
-    this.setData({ points: points, sources: sources });
-    this.refresh();
+    this.setData(patch);
+    this.refreshSources();
   },
 
   onPointTitle: function (e) {
     var i = Number(e.currentTarget.dataset.i || 0);
-    var points = this.data.points.slice();
-    points[i] = Object.assign({}, points[i], { title: e.detail.value });
-    this.setData({ points: points });
-    this.refresh();
+    var patch = {};
+    patch['points[' + i + '].title'] = e.detail.value;
+    this.setData(patch);
+    this.scheduleSourceLabels();
   },
 
   onPointDetail: function (e) {
     var i = Number(e.currentTarget.dataset.i || 0);
-    var points = this.data.points.slice();
-    points[i] = Object.assign({}, points[i], { detail: e.detail.value });
-    this.setData({ points: points });
+    var patch = {};
+    patch['points[' + i + '].detail'] = e.detail.value;
+    this.setData(patch);
   },
 
   onPointApplies: function (e) {
     var i = Number(e.currentTarget.dataset.i || 0);
-    var points = this.data.points.slice();
-    points[i] = Object.assign({}, points[i], { appliesTo: e.detail.value });
-    this.setData({ points: points });
+    var patch = {};
+    patch['points[' + i + '].appliesTo'] = e.detail.value;
+    this.setData(patch);
   },
 
   setPointStance: function (e) {
     var i = Number(e.currentTarget.dataset.i || 0);
-    var k = e.currentTarget.dataset.k;
-    var points = this.data.points.slice();
-    points[i] = Object.assign({}, points[i], { stance: k });
-    this.setData({ points: points });
+    var patch = {};
+    patch['points[' + i + '].stance'] = e.currentTarget.dataset.k;
+    this.setData(patch);
   },
 
   /* ---------- 依据 ---------- */
@@ -280,7 +328,7 @@ Page({
       pointIds: []
     });
     this.setData({ sources: sources });
-    this.refresh();
+    this.refreshSources();
   },
 
   removeSource: function (e) {
@@ -288,37 +336,40 @@ Page({
     var sources = this.data.sources.slice();
     sources.splice(i, 1);
     this.setData({ sources: sources });
-    this.refresh();
+    this.refreshSources();
   },
 
   onSrcField: function (e) {
     var i = Number(e.currentTarget.dataset.i || 0);
     var field = e.currentTarget.dataset.f;
-    var sources = this.data.sources.slice();
     var patch = {};
-    patch[field] = e.detail.value;
-    sources[i] = Object.assign({}, sources[i], patch);
-    this.setData({ sources: sources });
+    patch['sources[' + i + '].' + field] = e.detail.value;
+    this.setData(patch);
   },
 
   setSrcType: function (e) {
     var i = Number(e.currentTarget.dataset.i || 0);
-    var k = e.currentTarget.dataset.k;
-    var sources = this.data.sources.slice();
-    sources[i] = Object.assign({}, sources[i], { sourceType: k });
-    this.setData({ sources: sources });
+    var patch = {};
+    patch['sources[' + i + '].sourceType'] = e.currentTarget.dataset.k;
+    this.setData(patch);
   },
 
   toggleSrcPoint: function (e) {
     var i = Number(e.currentTarget.dataset.i || 0);
     var pid = String(e.currentTarget.dataset.pid);
-    var sources = this.data.sources.slice();
-    var ids = (sources[i].pointIds || []).slice();
+    var ids = (this.data.sources[i].pointIds || []).slice();
     var at = ids.indexOf(pid);
     if (at >= 0) ids.splice(at, 1); else ids.push(pid);
-    sources[i] = Object.assign({}, sources[i], { pointIds: ids });
-    this.setData({ sources: sources });
-    this.refresh();
+    var patch = {};
+    patch['sources[' + i + '].pointIds'] = ids;
+    var choices = this.data.sources[i].linkChoices || [];
+    for (var j = 0; j < choices.length; j++) {
+      if (String(choices[j].id) === pid) {
+        patch['sources[' + i + '].linkChoices[' + j + '].on'] = ids.indexOf(choices[j].id) >= 0;
+        break;
+      }
+    }
+    this.setData(patch);
   },
 
   /* ---------- 校验与保存 ---------- */
@@ -386,7 +437,12 @@ Page({
       points: points,
       sources: sources
     };
-    if (this.data.id) payload.id = this.data.id;
+    var reviewedAt = dateOnly(this.data.reviewedAt);
+    if (reviewedAt) payload.reviewedAt = reviewedAt;
+    if (this.data.id) {
+      payload.id = this.data.id;
+      payload.nextReviewAt = dateOnly(this.data.nextReviewAt) || null;
+    }
     return payload;
   },
 
@@ -407,13 +463,17 @@ Page({
     var payload = this.buildPayload();
     return api.saveExperience(payload).then(function (res) {
       var id = res.id || self.data.id;
+      /* 服务端的 hint（「内容已保存，但搜索索引还没建好」）要显示出来 ——
+         之前只用了 res.id，hint 被丢掉，索引失败就没人知道了。 */
+      var hint = (res && res.hint) || '';
       if (!publish) {
-        self.setData({ saving: false, id: id, isNew: false });
-        wx.showToast({ title: '已存草稿', icon: 'none' });
+        self.setData({ saving: false, id: id, isNew: false, hint: hint });
+        wx.showToast({ title: hint ? '已存草稿' : '已存草稿', icon: 'none' });
         return;
       }
-      return api.publishExperience(id).then(function () {
-        self.setData({ saving: false, id: id, isNew: false });
+      return api.publishExperience(id).then(function (pres) {
+        var hint2 = hint || ((pres && pres.hint) || '');
+        self.setData({ saving: false, id: id, isNew: false, hint: hint2 });
         wx.showToast({ title: '已发布', icon: 'none' });
       });
     }).catch(function (err) {

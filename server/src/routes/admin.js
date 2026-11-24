@@ -18,7 +18,7 @@ const expService = require('../services/experiences');
 const fbService = require('../services/feedbacks');
 const vectorStore = require('../services/vector-store');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
-const { fail } = require('../middleware/error');
+const { fail, assertId } = require('../middleware/error');
 
 const router = express.Router();
 
@@ -44,11 +44,7 @@ router.get('/api/admin/experiences', async function (req, res, next) {
       page: q.page,
       size: q.size
     });
-    for (const item of list.items) {
-      item.tagIds = await expDao.listTagIds(item.id);
-      item.keywords = item.searchKeywords || [];
-    }
-    ok(res, { items: list.items, total: list.items.length, page: list.page, size: list.size });
+    ok(res, { items: list.items, total: list.total, page: list.page, size: list.size });
   } catch (e) {
     next(e);
   }
@@ -82,7 +78,7 @@ router.post('/api/admin/experiences', async function (req, res, next) {
 /** GET /api/admin/experiences/:id */
 router.get('/api/admin/experiences/:id', async function (req, res, next) {
   try {
-    const exp = await expDao.getById(req.params.id);
+    const exp = await expDao.getById(assertId(req.params.id));
     if (!exp) throw fail('NOT_FOUND', '这条经验不存在');
     ok(res, exp);
   } catch (e) {
@@ -94,7 +90,7 @@ router.get('/api/admin/experiences/:id', async function (req, res, next) {
 router.put('/api/admin/experiences/:id', async function (req, res, next) {
   try {
     const payload = req.body || {};
-    const current = await expDao.getById(req.params.id);
+    const current = await expDao.getById(assertId(req.params.id));
     if (!current) throw fail('NOT_FOUND', '这条经验不存在');
     const out = await expService.save({
       id: Number(req.params.id),
@@ -109,9 +105,12 @@ router.put('/api/admin/experiences/:id', async function (req, res, next) {
       confidence: payload.confidence || current.confidence,
       reviewedAt: payload.reviewedAt || current.reviewedAt,
       nextReviewAt: payload.nextReviewAt !== undefined ? payload.nextReviewAt : current.nextReviewAt,
-      tagIds: payload.tagIds || [],
-      points: payload.points || [],
-      sources: payload.sources || []
+      /* ⚠️ 缺省一律取当前值 —— 之前 points/sources/tagIds 缺省是空数组，
+         对草稿 PUT 只传 title，实测要点 2→0、依据 1→0、标签 2→0，
+         内容被静默清空（已发布经验有发布校验挡着，草稿没有）。 */
+      tagIds: payload.tagIds !== undefined ? payload.tagIds : (current.tagIds || []),
+      points: payload.points !== undefined ? payload.points : (current.points || []),
+      sources: payload.sources !== undefined ? payload.sources : (current.sources || [])
     });
     ok(res, { ok: true, id: out.id, hint: out.hint });
   } catch (e) {
@@ -119,17 +118,29 @@ router.put('/api/admin/experiences/:id', async function (req, res, next) {
   }
 });
 
-/** DELETE /api/admin/experiences/:id */
+/**
+ * DELETE /api/admin/experiences/:id
+ * ⚠️ 之前查了 getById 但没用返回值 —— 删一条不存在的经验也返回 200，
+ *    调用方以为删掉了。删库与清索引也分成了两条独立语句，
+ *    中间失败会留下孤儿索引文档。现在同一个事务里做完。
+ */
 router.delete('/api/admin/experiences/:id', async function (req, res, next) {
   try {
-    await expDao.getById(req.params.id);
-    await db.query('DELETE FROM experiences WHERE id = $1', [Number(req.params.id)]);
-    await sdDao.removeExperience(Number(req.params.id));
+    const id = Number(req.params.id);
+    if (!isValidId(id)) throw fail('NOT_FOUND', '这条经验不存在');
+    const existing = await expDao.getById(id);
+    if (!existing) throw fail('NOT_FOUND', '这条经验不存在');
+    await expService.remove(id);
     ok(res, { ok: true });
   } catch (e) {
     next(e);
   }
 });
+
+/** id 必须是正整数 —— 非法 id 返回 404，不进数据库（§P1-14） */
+function isValidId (id) {
+  return Number.isInteger(id) && id > 0;
+}
 
 /** POST /api/admin/experiences/:id/publish */
 router.post('/api/admin/experiences/:id/publish', async function (req, res, next) {
@@ -141,10 +152,15 @@ router.post('/api/admin/experiences/:id/publish', async function (req, res, next
   }
 });
 
-/** POST /api/admin/experiences/:id/unpublish */
+/**
+ * POST /api/admin/experiences/:id/unpublish
+ * ⚠️ 之前根本没查存在性 —— 下线一条不存在的经验也返回 200。
+ */
 router.post('/api/admin/experiences/:id/unpublish', async function (req, res, next) {
   try {
-    const out = await expService.unpublish(req.params.id);
+    const id = Number(req.params.id);
+    if (!isValidId(id)) throw fail('NOT_FOUND', '这条经验不存在');
+    const out = await expService.unpublish(id);
     ok(res, { ok: true, id: out.id });
   } catch (e) {
     next(e);
@@ -175,8 +191,10 @@ router.post('/api/admin/tags', async function (req, res, next) {
     if (!name) throw fail('VALIDATION', '标签名不能为空');
     const categoryId = body.categoryId === undefined || body.categoryId === null
       ? null : Number(body.categoryId);
-    /* 标签必须归属某个领域（tags.category_id 是 NOT NULL），
-       缺领域时直接说清楚，别让数据库抛一个看不懂的约束错误 */
+    /* 标签要归属某个领域 ——
+       数据库列本身可空（ON DELETE SET NULL），
+       但业务上标签脱离领域没有意义，所以缺领域时直接说清楚，
+       别让数据库抛一个看不懂的约束错误 */
     if (categoryId === null) throw fail('VALIDATION', '请选择这个标签属于哪个领域');
     /* 唯一键是（领域, 名称） */
     const dup = await catalogDao.findByCategoryAndName(categoryId, name);
@@ -275,44 +293,69 @@ router.post('/api/admin/reindex', async function (req, res, next) {
       return;
     }
     const out = await expService.reindexAll();
-    ok(res, { ok: true, documents: out.documents });
+    ok(res, { ok: out.failed === 0, documents: out.documents, experiences: out.experiences, failed: out.failed });
   } catch (e) {
     next(e);
   }
 });
 
-/** GET /api/admin/stats —— 库内指标（全部由数据派生，不写死） */
+/**
+ * GET /api/admin/stats —— 库内指标（全部由数据派生，不写死）
+ *
+ * ⚠️ 之前是「把全部经验拉进内存再数」——
+ *    listForAdmin({ size: 1000 }) 会被 limit 截到 200，
+ *    库里 214 条时统计就报 200。现在改成 SQL 聚合，数多少是多少。
+ */
 router.get('/api/admin/stats', async function (req, res, next) {
   try {
-    const all = await expDao.listForAdmin({ size: 1000 });
-    const items = all.items;
-    const published = items.filter(function (e) { return e.status === 'published'; });
-    const tags = await catalogDao.listTags();
-    const feedbacks = await fbDao.listForAdmin({ size: 1000 });
-    let points = 0;
-    let sources = 0;
-    let sourceMetaGap = 0;
+    /* 用 CASE WHEN 计数而不是 count(*) FILTER (WHERE …) ——
+       pg-mem 会忽略 FILTER 里的条件（每行都算进去），两个后端行为必须一致。 */
+    const expCounts = await db.queryOne(
+      "SELECT count(*) AS total, " +
+      "sum(CASE WHEN status = 'published' THEN 1 ELSE 0 END) AS published, " +
+      "sum(CASE WHEN status <> 'published' THEN 1 ELSE 0 END) AS drafts " +
+      'FROM experiences'
+    );
+    const pointCount = await db.queryOne('SELECT count(*) AS n FROM points');
+    const sourceCount = await db.queryOne('SELECT count(*) AS n FROM sources');
+    const tagCount = await db.queryOne('SELECT count(*) AS n FROM tags');
+    const pendingFeedback = await db.queryOne(
+      "SELECT count(*) AS n FROM feedbacks WHERE status = 'pending'"
+    );
+    /* 依据元信息缺口：缺作者或缺平台的依据条数 */
+    const sourceMetaGap = await db.queryOne(
+      "SELECT count(*) AS n FROM sources WHERE author = '' OR platform = ''"
+    );
+    /* 待复核：健康 / 钱财 / 办事维权三个领域里，已发布但没有下次复核日期的
+       —— 按领域 slug 判断，不写死数字 id（数字 id 与种子顺序绑定，换个种子就错） */
+    const reviewCats = await db.query(
+      "SELECT id FROM categories WHERE slug IN ('health', 'money', 'rights')"
+    );
+    const reviewIds = reviewCats.rows.map(function (r) { return Number(r.id); });
     let needReview = 0;
-    for (const e of items) {
-      points += (e.points || []).length;
-      sources += (e.sources || []).length;
-      for (const s of e.sources || []) {
-        if (!s.author || !s.platform) sourceMetaGap++;
-      }
-      if (e.status === 'published' &&
-          (e.categoryId === 5 || e.categoryId === 6 || e.categoryId === 7) &&
-          !e.nextReviewAt) needReview++;
+    if (reviewIds.length) {
+      const row = await db.queryOne(
+        "SELECT count(*) AS n FROM experiences WHERE status = 'published' " +
+        'AND next_review_at IS NULL AND category_id IN (' + reviewIds.join(',') + ')'
+      );
+      needReview = Number(row ? row.n : 0);
     }
+    /* 缺索引的已发布经验 —— 索引失败的痕迹要让管理员看得见（§7.9） */
+    const missingIndex = await sdDao.listMissingIndex();
+
+    const total = Number(expCounts && expCounts.total ? expCounts.total : 0);
+    const published = Number(expCounts && expCounts.published ? expCounts.published : 0);
     ok(res, {
-      experiences: items.length,
-      published: published.length,
-      drafts: items.length - published.length,
-      points: points,
-      sources: sources,
-      tags: tags.length,
-      pendingFeedback: feedbacks.filter(function (f) { return f.status === 'pending'; }).length,
+      experiences: total,
+      published: published,
+      drafts: Number(expCounts && expCounts.drafts ? expCounts.drafts : 0),
+      points: Number(pointCount ? pointCount.n : 0),
+      sources: Number(sourceCount ? sourceCount.n : 0),
+      tags: Number(tagCount ? tagCount.n : 0),
+      pendingFeedback: Number(pendingFeedback ? pendingFeedback.n : 0),
       needReview: needReview,
-      sourceMetaGap: sourceMetaGap
+      sourceMetaGap: Number(sourceMetaGap ? sourceMetaGap.n : 0),
+      missingIndex: missingIndex.length
     });
   } catch (e) {
     next(e);

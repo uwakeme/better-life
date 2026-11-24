@@ -19,6 +19,11 @@ Page({
     sort: 'updated',
     cards: [],
     total: 0,
+    page: 1,
+    size: 10,
+    hasMore: false,
+    loadingMore: false,
+    /* 「全部领域」面板的展开状态 —— wxml 有引用 */
     showAllCats: false
   },
 
@@ -32,60 +37,82 @@ Page({
     });
   },
 
+  onReachBottom: function () {
+    this.loadList(true);
+  },
+
   load: function () {
     var self = this;
-    this.setData({ loading: true, error: '' });
-    return Promise.all([
-      api.getCategories(),
-      api.listExperiences({ size: 100 })
-    ]).then(function (res) {
-      var cats = res[0].categories || [];
-      var list = res[1].items || [];
-      /* 领域计数由数据派生 */
-      var counts = {};
-      for (var i = 0; i < list.length; i++) {
-        var cid = list[i].categoryId;
-        counts[cid] = (counts[cid] || 0) + 1;
-      }
+    var cats = this.data.categories.length ? Promise.resolve(null) : this.loadCats();
+    return Promise.all([cats, this.loadList(false)]);
+  },
+
+  loadCats: function () {
+    var self = this;
+    return api.getCategories().then(function (res) {
+      var cats = res.categories || [];
       var catItems = [];
       for (var j = 0; j < cats.length; j++) {
         catItems.push({
           id: cats[j].id,
           name: cats[j].name,
           icon: cats[j].icon,
-          desc: cats[j].desc,
-          count: counts[cats[j].id] || 0
+          desc: cats[j].description || cats[j].desc || '',
+          count: cats[j].experienceCount || 0
         });
       }
-      self.setData({
-        loading: false,
-        source: res[0].source || 'demo',
-        categories: catItems,
-        raw: list,
-        total: list.length
-      });
-      self.applySort();
-    }).catch(function (err) {
-      self.setData({ loading: false, error: (err && err.message) || '网络不太顺畅，没连上' });
-    });
+      self.setData({ categories: catItems });
+    }).catch(function () { /* 领域入口失败不影响经验流 */ });
   },
 
-  /** 排序在原始数据上做，排序完再转成视图模型 */
-  applySort: function () {
-    var list = (this.data.raw || []).slice();
-    if (this.data.sort === 'fav') {
-      list.sort(function (a, b) { return (b.favoriteCount || 0) - (a.favoriteCount || 0); });
-    } else {
-      list.sort(function (a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+  loadList: function (append) {
+    var self = this;
+    if (append && (this.data.loading || this.data.loadingMore || !this.data.hasMore)) {
+      return Promise.resolve();
     }
-    var cards = [];
-    for (var i = 0; i < list.length; i++) cards.push(view.cardView(list[i]));
-    this.setData({ cards: cards });
+    var page = append ? this.data.page + 1 : 1;
+    var seq = (this.listSeq || 0) + 1;
+    this.listSeq = seq;
+    this.setData(append ? {
+      loadingMore: true, error: ''
+    } : {
+      loading: true, loadingMore: false, error: '', page: 1, cards: [], total: 0, hasMore: false
+    });
+    return api.listExperiences({
+      sort: this.data.sort,
+      page: page,
+      size: this.data.size
+    }).then(function (res) {
+      if (seq !== self.listSeq) return;
+      var list = res.items || [];
+      var fresh = [];
+      for (var i = 0; i < list.length; i++) fresh.push(view.cardView(list[i]));
+      var total = typeof res.total === 'number' ? res.total : 0;
+      var currentPage = Number(res.page) || page;
+      var size = Number(res.size) || self.data.size;
+      self.setData({
+        loading: false,
+        loadingMore: false,
+        cards: append ? self.data.cards.concat(fresh) : fresh,
+        total: total,
+        page: currentPage,
+        size: size,
+        hasMore: typeof res.hasMore === 'boolean' ? res.hasMore : (currentPage * size < total),
+        source: res.source || 'demo'
+      });
+    }).catch(function (err) {
+      if (seq !== self.listSeq) return;
+      self.setData({
+        loading: false,
+        loadingMore: false,
+        error: (err && err.message) || '网络不太顺畅，没连上'
+      });
+    });
   },
 
   setSort: function (e) {
     this.setData({ sort: e.currentTarget.dataset.k });
-    this.applySort();
+    this.loadList(false);
   },
 
   goSearch: function () {
@@ -97,6 +124,7 @@ Page({
     wx.navigateTo({ url: '/pages/category/category?categoryId=' + id });
   },
 
+  /** 展开「全部领域」面板 —— 面板本身是完整功能，之前只是没有入口 */
   goAllCats: function () {
     this.setData({ showAllCats: !this.data.showAllCats });
   },
@@ -107,7 +135,7 @@ Page({
   },
 
   retry: function () {
-    this.load();
+    this.loadList(!!this.data.cards.length);
   },
 
   goHome: function () {

@@ -9,7 +9,7 @@
   <tag-pills wx:if="{{tags.length}}" items="{{tags}}" value="{{tagId}}" label="按二级标签筛选" bind:change="onTag" />
 
   <view wx:if="{{source === 'demo' && !loading}}" class="notice">
-    当前为演示数据，检索结果是写死的样例。
+    当前为演示数据，以下为离线样例。
   </view>
 
   <view class="filter-bar">
@@ -17,6 +17,10 @@
   </view>
 
   <state-view wx:if="{{loading}}" type="loading" />
+  <view wx:elif="{{error && cards.length}}" class="notice warn">
+    <text>{{error}}</text>
+    <button class="btn sm" bindtap="retry" hover-class="tap">重试</button>
+  </view>
   <state-view
     wx:elif="{{error}}"
     type="error"
@@ -36,4 +40,9 @@
   <view wx:else class="list">
     <experience-card wx:for="{{cards}}" wx:key="id" card="{{item}}" bind:open="openExp" />
   </view>
+  <view wx:if="{{loadingMore}}" class="list-status" aria-role="status">正在加载更多…</view>
+  <view wx:elif="{{hasMore && !loading && !error}}" class="list-status">
+    <button class="btn sm" bindtap="onReachBottom" hover-class="tap">加载更多</button>
+  </view>
+  <view wx:elif="{{!loading && cards.length}}" class="list-status">已经到底了</view>
 </view>

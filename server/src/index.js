@@ -22,10 +22,15 @@ async function main () {
     console.log('better-life 后端已启动');
     console.log('  端口：' + config.port);
     console.log('  数据库：' + mode.mode);
-    console.log('  向量库：' + store + (store === 'memory' ? '（降级：精确余弦暴力检索）' : ''));
+    console.log('  向量库：' + store + (store === 'memory' ? '（降级：内存实现只做文档缓存，检索走关键词路）' : ''));
     console.log('  embedding：' + embedding.provider + ' / ' + embedding.model);
     if (embedding.provider === 'local') {
       console.log('  提示：当前是 local 哈希 embedding，检索会如实报 mode=keyword');
+    }
+    /* 风险提示打在启动日志里 —— 上线前看一眼就能发现「密钥没配」「审核没真跑」 */
+    const warnings = config.warnRiskyConfig();
+    for (const w of warnings) {
+      console.log('  ⚠️ ' + w);
     }
   });
 

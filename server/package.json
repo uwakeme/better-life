@@ -6,7 +6,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node scripts/selftest.js && node scripts/http-test.js",
+    "test": "node scripts/selftest.js && node scripts/regression-test.js && node scripts/http-test.js",
     "selftest": "node scripts/selftest.js",
     "http-test": "node scripts/http-test.js",
     "reindex": "node scripts/reindex.js",

@@ -4,7 +4,7 @@
 > 一条经验 = 结论 + 可判定立场的要点 + 挂在要点上的依据来源 —— 可检索、可溯源、可反馈。
 
 **当前状态**：设计已确认；**小程序端与后端代码已落地** —— 小程序 14 页、后端 34 个接口、
-30 条带真实来源链接的种子内容、九支仓库级自检 + 两支服务端自检全绿。
+30 条带真实来源链接的种子内容、仓库级 9 支断言脚本 + 服务端用例全绿（一条命令跑完）。
 **尚未部署**：生产 AppID / 备案域名 / 服务器 / nginx 都还没接，服务器上的动作由本人执行。
 
 ## 文档索引
@@ -32,13 +32,13 @@ better-life/
 ├─ assets/                     tabBar 图标与图标资源
 ├─ data/                       演示数据（32 条经验 / 9 领域 / 38 标签 / 62 条依据）
 ├─ docs/
-│  └─ better-life-design.md    产品与技术设计文档（v1.7）
+│  └─ better-life-design.md    产品与技术设计文档（v1.8）
 ├─ server/                     后端（Node + Express + PostgreSQL/pgvector，pg-mem 可替）
 │  ├─ src/                     config / db / dao / services / middleware / routes
 │  ├─ scripts/                 seed.js / selftest.js / http-test.js / reindex.js / cases.js
 │  ├─ sql/seed.sql             可 review 的种子 SQL（由 data/ 生成）
 │  └─ .env.example             环境变量样例
-├─ scripts/                    仓库级自检（9 支）+ 生成脚本（3 支）
+├─ scripts/                    仓库级自检（9 支 + 一键 runner）+ 生成脚本（3 支）
 └─ design/                     高保真原型（便签墙方向）
    ├─ index.html               工作台入口，浏览器直接打开
    ├─ README.md                原型说明
@@ -50,14 +50,26 @@ better-life/
 - **设计**：产品定位、内容模型（经验 / 要点 / 依据三层）、数据模型、搜索方案（向量 + 关键词 RRF 融合）、API 清单、上线合规门槛 —— 都在设计文档里
 - **视觉方向**：定稿为**便签墙**；另外两套方向已删，否掉的理由留档在 [`design/README.md`](design/README.md) §5
 - **小程序端**：14 个页面全部实现并逐页截图验过；「我的」页带开发模式面板（身份切换 + 演示场景），正式包关掉即隐藏
-- **后端**：34 个接口（公开 / 登录 / 管理三组）、11 张表、DAO / 服务 / 路由分层；支持 PostgreSQL 与 pg-mem 双后端，同一套自检两边都能跑
+- **后端**：34 个接口（公开 / 登录 / 管理三组）、15 张表、DAO / 服务 / 路由分层；支持 PostgreSQL 与 pg-mem 双后端，同一套自检两边都能跑
 - **种子内容**：30 条经验、**62 条依据全部是真实可访问的链接**（46 个站点），`scripts/verify-links.js` 每次都重测，**当前 62/62 可达**
-- **自检**：仓库级 8 支断言脚本 **342 项全绿** + 链接 62 条全通；服务端 2 支 **各 101 项全绿**（19 组）
+- **自检**：仓库级 9 支断言脚本 **460 项全绿**；服务端接口用例 **168 项 / 33 组全绿**，安全与并发专项回归 **24 项全绿**；追加链接检查为 **62/62 可达**
 
 ### 自检怎么跑
 
 ```powershell
-# 仓库级 8 支断言脚本
+# 一条命令跑完全部（仓库级 9 支 + 服务端用例与专项回归；内存库，不连真实 PostgreSQL）
+node scripts/verify-all.js
+
+# 追加链接自检（需要联网，逐条探测 62 个来源）
+node scripts/verify-all.js --with-links
+```
+
+`verify-all.js` 按顺序跑完所有断言脚本，任何一支失败就 `exit 1`，并把失败那支的输出原样打出来。
+改了任何一处，跑这一条就够了。
+
+单独跑某一支：
+
+```powershell
 node scripts/lint-wxml.js
 node scripts/check-modules.js
 node scripts/verify-data.js
@@ -66,16 +78,19 @@ node scripts/verify-tokens.js
 node scripts/verify-copy.js
 node scripts/verify-pages.js
 node scripts/verify-contract.js
+node scripts/verify-client-behavior.js   # 客户端行为：错误码透传、写操作不回落、筛选映射……
 
-# 链接自检（联网，逐条探测 62 个来源）
-node scripts/verify-links.js
-
-# 服务端 2 支（内存库，不连真实 PostgreSQL）
+# 服务端用例（内存库）
 node server/scripts/selftest.js
-node server/scripts/http-test.js --memory
+node server/scripts/regression-test.js   # 安全、并发、限流、索引与生产配置专项回归
+
+# 同一份用例，改指真实 PG 或已起的实例：
+node server/scripts/http-test.js
+node server/scripts/http-test.js --base=http://127.0.0.1:8080
 ```
 
-改了任何一处都要重跑对应那支；脚本有错会 exit 1。
+> `selftest.js` 与 `http-test.js` **跑的是同一份用例**（`cases.js`）——
+> 前者固定起内存库，后者可以改指真实数据库或已有实例，用来验证同一批断言在真库上也成立。
 
 ## 还没做的
 

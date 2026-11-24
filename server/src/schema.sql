@@ -1,4 +1,9 @@
 -- better-life 建表脚本（设计文档 §6.2 逐字照抄）
+
+CREATE OR REPLACE FUNCTION better_normalize(input TEXT) RETURNS TEXT
+LANGUAGE SQL IMMUTABLE PARALLEL SAFE AS $$
+  SELECT regexp_replace(lower(COALESCE(input, '')), '[\s　-〿＀-￯!-/:-@\[-`{-~]+', '', 'g');
+$$;
 --
 -- 约定：
 --   1. 库表与列一律 snake_case；业务层用 camelCase，转换只在 DAO 的 toCamel 里做。
@@ -141,6 +146,31 @@ CREATE TABLE IF NOT EXISTS feedbacks (
 );
 CREATE INDEX IF NOT EXISTS feedbacks_target_idx ON feedbacks (target_type, target_id, status);
 CREATE INDEX IF NOT EXISTS feedbacks_openid_idx ON feedbacks (openid, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS uploaded_media (
+  url        TEXT NOT NULL,
+  openid     TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (url, openid)
+);
+CREATE INDEX IF NOT EXISTS uploaded_media_owner_idx ON uploaded_media (openid, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS rate_limits (
+  bucket_key   TEXT PRIMARY KEY,
+  window_start TIMESTAMPTZ NOT NULL,
+  count        INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS seccheck_nonces (
+  nonce      TEXT PRIMARY KEY,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS pending_media_callbacks (
+  trace_id  TEXT PRIMARY KEY,
+  result    TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 CREATE TABLE IF NOT EXISTS search_documents (
   id         BIGSERIAL PRIMARY KEY,

@@ -1,18 +1,3 @@
-/**
- * Vector Store 抽象与降级（§7.6）
- *
- * 接口：
- *   upsert(docs)        批量写入/更新
- *   remove(docType, refIds)
- *   query(vector, topK)  => [{ docType, refId, score }]
- *
- * 两档实现：
- *   pgvector —— SELECT ... WHERE model=$1 ORDER BY embedding <=> $2 LIMIT $3
- *   memory   —— 启动时全量载入内存，暴力余弦（零依赖降级）
- *
- * 探测：启动时查 pg_extension 有没有 vector；查不到就用 memory，
- * 并在 /api/health 如实返回 vectorStore: 'memory'。
- */
 const db = require('../db');
 const config = require('../config');
 const sdDao = require('../dao/search-documents');
@@ -30,11 +15,9 @@ function cosine (a, b) {
     na += a[i] * a[i];
     nb += b[i] * b[i];
   }
-  if (!na || !nb) return 0;
-  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+  return !na || !nb ? 0 : dot / (Math.sqrt(na) * Math.sqrt(nb));
 }
 
-/** 探测可用的实现 */
 async function detect () {
   if (db.isMemory()) {
     mode = 'memory';
@@ -50,105 +33,173 @@ async function detect () {
   return mode;
 }
 
-/** 内存实现：启动时全量载入 */
 async function loadMemory () {
   const rows = await sdDao.listAll(config.embedding.model);
   memoryDocs = [];
-  for (const r of rows) {
-    let vec = r.embedding;
+  for (const row of rows) {
+    let vec = row.embedding;
     if (typeof vec === 'string') {
       try { vec = JSON.parse(vec); } catch (e) { vec = []; }
     }
-    if (!Array.isArray(vec) || !vec.length) continue;
-    memoryDocs.push({ docType: r.docType, refId: r.refId, vector: vec });
+    if (Array.isArray(vec) && vec.length) {
+      memoryDocs.push({ docType: row.docType, refId: row.refId, vector: vec });
+    }
   }
   return memoryDocs.length;
 }
 
-/** 批量写入 */
+function syncUpsert (docs) {
+  if (mode !== 'memory') return;
+  for (const doc of docs) {
+    const idx = memoryDocs.findIndex(function (item) {
+      return item.docType === doc.docType && Number(item.refId) === Number(doc.refId);
+    });
+    const item = { docType: doc.docType, refId: Number(doc.refId), vector: doc.embedding };
+    if (idx >= 0) memoryDocs[idx] = item;
+    else memoryDocs.push(item);
+  }
+}
+
 async function upsert (docs) {
   const list = Array.isArray(docs) ? docs : [];
   if (!list.length) return 0;
   await sdDao.upsert(list);
+  syncUpsert(list);
+  return list.length;
+}
+
+/** 单经验删除与插入同事务，失败时旧索引整体保留。 */
+async function replaceExperience (experienceId, docs, pointIds) {
+  const list = Array.isArray(docs) ? docs : [];
+  await db.tx(async function (client) {
+    await sdDao.removeExperience(experienceId, client, pointIds);
+    await sdDao.upsert(list, client);
+  });
   if (mode === 'memory') {
-    for (const doc of list) {
-      const idx = memoryDocs.findIndex(function (m) {
-        return m.docType === doc.docType && Number(m.refId) === Number(doc.refId);
-      });
-      const item = { docType: doc.docType, refId: Number(doc.refId), vector: doc.embedding };
-      if (idx >= 0) memoryDocs[idx] = item;
-      else memoryDocs.push(item);
-    }
+    const refs = list.map(function (doc) { return Number(doc.refId); });
+    refs.push.apply(refs, (pointIds || []).map(Number));
+    forget('point', refs);
+    forget('experience', [experienceId]);
+    syncUpsert(list);
   }
   return list.length;
 }
 
-/** 删除 */
-async function remove (docType, refIds) {
-  const ids = Array.isArray(refIds) ? refIds : [refIds];
-  for (const id of ids) {
-    await db.query(
-      'DELETE FROM search_documents WHERE doc_type = $1 AND ref_id = $2',
-      [String(docType), Number(id)]
-    );
-  }
-  if (mode === 'memory') {
-    memoryDocs = memoryDocs.filter(function (m) {
-      if (m.docType !== docType) return true;
-      return ids.map(Number).indexOf(Number(m.refId)) < 0;
-    });
-  }
+function forget (docType, refIds) {
+  if (mode !== 'memory') return;
+  const ids = (refIds || []).map(Number);
+  memoryDocs = memoryDocs.filter(function (item) {
+    return item.docType !== docType || ids.indexOf(Number(item.refId)) < 0;
+  });
 }
 
-/**
- * 查询最近邻
- * @returns {Array<{docType, refId, score}>}
- */
-async function query (vector, topK) {
+async function remove (docType, refIds) {
+  const ids = (Array.isArray(refIds) ? refIds : [refIds]).map(Number).filter(function (id) {
+    return Number.isInteger(id) && id > 0;
+  });
+  if (!ids.length) return;
+  const params = [String(docType)].concat(ids);
+  await db.query(
+    'DELETE FROM search_documents WHERE doc_type = $1 AND ref_id IN (' +
+    ids.map(function (_, i) { return '$' + (i + 2); }).join(',') + ')', params
+  );
+  forget(docType, ids);
+}
+
+async function removeExperience (experienceId, pointIds) {
+  await sdDao.removeExperience(experienceId, null, pointIds);
+  forget('experience', [experienceId]);
+  forget('point', pointIds || []);
+}
+
+function filterConditions (filters, params, pointAlias) {
+  const conditions = [];
+  const categories = (filters.categoryIds || []).map(Number).filter(function (id) {
+    return Number.isInteger(id) && id > 0;
+  });
+  if (categories.length) {
+    conditions.push(pointAlias + '.category_id IN (' + categories.map(function (id) {
+      params.push(id);
+      return '$' + params.length;
+    }).join(',') + ')');
+  }
+  if (filters.stance) {
+    params.push(String(filters.stance));
+    conditions.push(pointAlias + '.id IN (SELECT experience_id FROM points WHERE stance = $' +
+      params.length + ')');
+  }
+  return conditions;
+}
+
+async function memoryEligible (filters) {
+  const expParams = [];
+  const expConditions = filterConditions(filters, expParams, 'e');
+  const expRes = await db.query(
+    "SELECT e.id FROM experiences e WHERE e.status = 'published'" +
+    (expConditions.length ? ' AND ' + expConditions.join(' AND ') : ''), expParams
+  );
+  const pointParams = [];
+  const pointConditions = filterConditions(filters, pointParams, 'e');
+  const pointRes = await db.query(
+    "SELECT p.id FROM points p JOIN experiences e ON e.id = p.experience_id WHERE e.status = 'published'" +
+    (pointConditions.length ? ' AND ' + pointConditions.join(' AND ') : ''), pointParams
+  );
+  return {
+    experience: new Set(expRes.rows.map(function (row) { return Number(row.id); })),
+    point: new Set(pointRes.rows.map(function (row) { return Number(row.id); }))
+  };
+}
+
+/** 先过滤再排序截断，memory 与 pgvector 使用同一组语义条件。 */
+async function query (vector, topK, filters) {
   const k = db.limit(topK, 30);
   if (!vector || !vector.length) return [];
-
+  const f = filters || {};
   if (mode === 'pgvector') {
-    const literal = '[' + vector.join(',') + ']';
+    const params = [config.embedding.model, '[' + vector.join(',') + ']'];
+    const expConditions = filterConditions(f, params, 'e');
+    const pointConditions = filterConditions(f, params, 'e');
     const res = await db.query(
-      'SELECT doc_type, ref_id FROM search_documents WHERE model = $1 ' +
-      'ORDER BY embedding <=> $2::vector LIMIT ' + k,
-      [config.embedding.model, literal]
+      'SELECT doc_type, ref_id, (embedding <=> $2::vector) AS distance FROM search_documents ' +
+      'WHERE model = $1 AND ((doc_type = \'experience\' AND ref_id IN ' +
+      '(SELECT e.id FROM experiences e WHERE e.status = \'published\'' +
+      (expConditions.length ? ' AND ' + expConditions.join(' AND ') : '') + ')) OR ' +
+      '(doc_type = \'point\' AND ref_id IN (SELECT p.id FROM points p JOIN experiences e ' +
+      "ON e.id = p.experience_id WHERE e.status = 'published'" +
+      (pointConditions.length ? ' AND ' + pointConditions.join(' AND ') : '') + '))) ' +
+      'ORDER BY embedding <=> $2::vector LIMIT ' + k, params
     );
-    const out = [];
-    for (let i = 0; i < res.rows.length; i++) {
-      out.push({
-        docType: res.rows[i].doc_type,
-        refId: Number(res.rows[i].ref_id),
-        score: 1 - i / (res.rows.length + 1),
+    return res.rows.map(function (row, i) {
+      const distance = Number(row.distance);
+      return {
+        docType: row.doc_type,
+        refId: Number(row.ref_id),
+        score: isNaN(distance) ? 0 : Math.max(0, 1 - distance),
+        distance: isNaN(distance) ? 1 : distance,
         rank: i + 1
-      });
-    }
-    return out;
-  }
-
-  /* memory：暴力余弦 */
-  const scored = [];
-  for (const m of memoryDocs) {
-    scored.push({
-      docType: m.docType,
-      refId: Number(m.refId),
-      score: cosine(vector, m.vector),
-      rank: 0
+      };
     });
   }
-  scored.sort(function (a, b) { return b.score - a.score; });
-  const top = scored.slice(0, k);
-  for (let i = 0; i < top.length; i++) top[i].rank = i + 1;
-  return top;
+
+  const eligible = await memoryEligible(f);
+  const scored = [];
+  for (const doc of memoryDocs) {
+    if (!eligible[doc.docType] || !eligible[doc.docType].has(Number(doc.refId))) continue;
+    scored.push({
+      docType: doc.docType, refId: Number(doc.refId), score: cosine(vector, doc.vector), rank: 0
+    });
+  }
+  scored.sort(function (a, b) {
+    return b.score - a.score || a.refId - b.refId ||
+      String(a.docType).localeCompare(String(b.docType));
+  });
+  return scored.slice(0, k).map(function (item, i) {
+    item.rank = i + 1;
+    return item;
+  });
 }
 
-/** 当前实现名 */
-function current () {
-  return mode;
-}
-
-/** 语义能力是否可用：local provider 没有真语义，必须报 false */
+function current () { return mode; }
 function semanticAvailable () {
   const embedding = require('./embedding');
   return mode === 'pgvector' && embedding.canCallRemote();
@@ -157,7 +208,10 @@ function semanticAvailable () {
 module.exports = {
   detect: detect,
   upsert: upsert,
+  replaceExperience: replaceExperience,
   remove: remove,
+  removeExperience: removeExperience,
+  forget: forget,
   query: query,
   current: current,
   semanticAvailable: semanticAvailable,

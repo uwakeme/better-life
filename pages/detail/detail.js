@@ -13,16 +13,25 @@
  */
 var api = require('../../utils/api');
 var view = require('../../utils/view');
+var format = require('../../utils/format');
 var role = require('../../utils/role');
-var auth = require('../../utils/auth');
 var share = require('../../utils/share');
 
 /** 需要额外免责提示的领域：健康、钱财、办事维权（§2.5） */
-var DISCLAIMER_CATS = {
-  5: '本条内容属于健康常识，不构成医疗建议。身体不适请及时就医，用药请遵医嘱。',
-  6: '本条内容提供的是常见做法参考。涉及金额较大或法律关系时，请以合同与官方口径为准。',
-  7: '本条内容整理的是常见处理路径。具体维权方案请结合合同与证据，必要时咨询专业机构。'
+var DISCLAIMER_SLUGS = {
+  health: '本条内容属于健康常识，不构成医疗建议。身体不适请及时就医，用药请遵医嘱。',
+  money: '本条内容提供的是常见做法参考。涉及金额较大或法律关系时，请以合同与官方口径为准。',
+  rights: '本条内容整理的是常见处理路径。具体维权方案请结合合同与证据，必要时咨询专业机构。'
 };
+
+function disclaimerFor (exp) {
+  if (exp.categorySlug && DISCLAIMER_SLUGS[exp.categorySlug]) {
+    return DISCLAIMER_SLUGS[exp.categorySlug];
+  }
+  var legacy = { 5: 'health', 6: 'money', 7: 'rights' };
+  var slug = legacy[Number(exp.categoryId || 0)];
+  return DISCLAIMER_SLUGS[slug] || '';
+}
 
 Page({
   data: {
@@ -73,9 +82,11 @@ Page({
       for (var j = 0; j < rel.length; j++) {
         related.push(view.cardView(rel[j]));
       }
-      var catId = Number(exp.categoryId || 0);
       var tagNames = exp.tagNames || res.tags || [];
       var tagLine = tagNames.join(' · ');
+      /* 投票态与收藏态由详情接口直接给 ——
+         之前 voted 永远是空、收藏态要另外拉整个收藏列表才知道。 */
+      var myVote = res.myVote;
       self.setData({
         tagLine: tagLine,
         loading: false,
@@ -85,11 +96,12 @@ Page({
         sourceCount: sources.length,
         usefulCount: res.usefulCount || exp.usefulCount || 0,
         notUsefulCount: res.notUsefulCount || exp.notUsefulCount || 0,
-        disclaimer: DISCLAIMER_CATS[catId] || '',
+        starred: !!res.starred,
+        voted: myVote === true ? 'up' : (myVote === false ? 'down' : ''),
+        disclaimer: disclaimerFor(exp),
         disputed: exp.confidence === 'disputed',
-        updatedLine: exp.updatedAt ? ('更新于 ' + exp.updatedAt + ' · 内容可能随时间变化') : '内容可能随时间变化'
+        updatedLine: exp.updatedAt ? ('更新于 ' + format.date(exp.updatedAt) + ' · 内容可能随时间变化') : '内容可能随时间变化'
       });
-      self.syncStar();
     }).catch(function (err) {
       var code = err && err.code;
       if (code === 'NOT_FOUND') {
@@ -97,22 +109,6 @@ Page({
         return;
       }
       self.setData({ loading: false, error: (err && err.message) || '网络不太顺畅，没连上' });
-    });
-  },
-
-  /** 收藏态：收藏列表里有没有这一条 */
-  syncStar: function () {
-    var self = this;
-    var id = this.data.id;
-    return api.listFavorites({ size: 200 }).then(function (res) {
-      var items = res.items || [];
-      var hit = false;
-      for (var i = 0; i < items.length; i++) {
-        if (Number(items[i].id) === Number(id)) { hit = true; break; }
-      }
-      self.setData({ starred: hit });
-    }).catch(function () {
-      /* 拉不到收藏列表不影响阅读，收藏态保持原样 */
     });
   },
 
@@ -149,12 +145,6 @@ Page({
       wx.showToast({ title: next ? '已收藏' : '已取消收藏', icon: 'none' });
     }).catch(function (err) {
       self.setData({ starred: !next });
-      if (err && err.code === 'UNAUTHORIZED') {
-        self.loginThen(function () {
-          self.onStar();
-        });
-        return;
-      }
       wx.showToast({ title: '未生效，请稍后重试', icon: 'none' });
     });
   },
@@ -167,23 +157,23 @@ Page({
       return;
     }
     var useful = e.currentTarget.dataset.v === 'up';
-    this.doVote(this.data.id, useful, 0);
+    this.doVote(this.data.id, useful);
   },
 
-  doVote: function (id, useful, retry) {
+  doVote: function (id, useful) {
     var self = this;
     return api.vote(id, useful).then(function (res) {
+      /* 用服务端返回的实际投票态回显 ——
+         再点一次同一个是取消投（服务端返回 useful=null），
+         之前不管怎样都显示「已记为有用」，票被取消了界面还在说记上了。 */
+      var now = (res && typeof res.useful === 'boolean') ? res.useful : null;
       self.setData({
-        voted: useful ? 'up' : 'down',
-        usefulCount: res.usefulCount || 0,
-        notUsefulCount: res.notUsefulCount || 0
+        voted: now === true ? 'up' : (now === false ? 'down' : ''),
+        usefulCount: (res && res.usefulCount) || 0,
+        notUsefulCount: (res && res.notUsefulCount) || 0
       });
-      wx.showToast({ title: useful ? '已记为有用' : '已记为没用', icon: 'none' });
+      wx.showToast({ title: now === null ? '已取消投票' : (now ? '已记为有用' : '已记为没用'), icon: 'none' });
     }).catch(function (err) {
-      if (err && err.code === 'UNAUTHORIZED' && retry === 0) {
-        self.loginThen(function () { self.doVote(id, useful, 1); });
-        return;
-      }
       wx.showToast({ title: '未生效，请稍后重试', icon: 'none' });
     });
   },
@@ -195,22 +185,16 @@ Page({
       wx.showToast({ title: '管理员直接修改内容即可', icon: 'none' });
       return;
     }
+    /* 带上标题 —— 不带的话反馈页一直显示「（当前经验）」，
+       读者不知道自己在反馈哪一条。 */
+    var title = (this.data.experience && this.data.experience.title) || '';
     wx.navigateTo({
-      url: '/pages/feedback/feedback?targetType=experience&targetId=' + this.data.id
+      url: '/pages/feedback/feedback?targetType=experience&targetId=' + this.data.id +
+        '&title=' + encodeURIComponent(title)
     });
   },
 
   /* ---------- 分享 ---------- */
-
-  loginThen: function (fn) {
-    return auth.login().then(function (u) {
-      if (!u) {
-        wx.showToast({ title: '登录未完成，请稍后再试', icon: 'none' });
-        return;
-      }
-      fn();
-    });
-  },
 
   onShareAppMessage: function () {
     return share.detailShare(this.data.experience);

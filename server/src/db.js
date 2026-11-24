@@ -17,10 +17,12 @@
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
+const { normalize } = require('./lib/search-text');
 
 let pool = null;
 let pgmemDb = null;
 let memoryMode = false;
+let memoryTxQueue = Promise.resolve();
 
 /**
  * 内存库下把 schema 里的 vector 类型换成 TEXT
@@ -28,30 +30,64 @@ let memoryMode = false;
  */
 function schemaForMode (sql) {
   if (!memoryMode) return sql;
-  return sql.replace(/\bvector\b/g, 'TEXT');
+  return sql
+    .replace(/CREATE OR REPLACE FUNCTION better_normalize[\s\S]*?\$\$;/, '')
+    .replace(/\bvector\b/g, 'TEXT');
 }
 
 async function init (options) {
   const opts = options || {};
   if (opts.memory || config.useMemoryDb) {
-    const { newDb } = require('pg-mem');
+    const { newDb, DataType } = require('pg-mem');
     pgmemDb = newDb({ autoCreateForeignKeyIndices: true });
+    /* 真实 PG 在 schema 中安装同名 SQL 函数；内存库用同一 JS 规则实现。 */
+    pgmemDb.public.registerFunction({
+      name: 'better_normalize',
+      args: [DataType.text],
+      returns: DataType.text,
+      implementation: normalize
+    });
     const pg = pgmemDb.adapters.createPg();
     pool = new pg.Pool();
     memoryMode = true;
+    /* 把「实际生效的模式」同步回 config ——
+       自检是 db.init({ memory: true }) 起的，配置层本来不知道自己在内存库上跑。
+       不同步的话，token 服务会以为自己在连真库，没有密钥就拒绝签发，
+       自检全线 401。health 接口的数据来源标记也靠这个字段如实上报。 */
+    config.useMemoryDb = true;
     await applySchema();
     return { mode: 'memory' };
   }
   const { Pool } = require('pg');
   pool = new Pool({
     connectionString: config.databaseUrl,
-    ssl: config.pgSsl ? { rejectUnauthorized: false } : undefined,
+    ssl: sslConfig(),
     max: 10,
     idleTimeoutMillis: 30000
   });
+  /* 空闲连接出错时 pool 会发 'error' 事件 —— 不挂监听的话是未处理事件，
+     会把整个进程带崩。 */
+  pool.on('error', function (err) {
+    console.error('[db] 连接池错误：' + (err && err.message ? err.message : err));
+  });
   await pool.query('SELECT 1');
   memoryMode = false;
+  memoryTxQueue = Promise.resolve();
+  config.useMemoryDb = false;
+  await applySchema();
   return { mode: 'postgres' };
+}
+
+/** 默认使用系统 CA；只有非生产环境显式申请时才允许跳过证书校验。 */
+function sslConfig () {
+  if (!config.pgSsl) return undefined;
+  if (config.pgSslCa) {
+    return { ca: fs.readFileSync(config.pgSslCa, 'utf8'), rejectUnauthorized: true };
+  }
+  if (config.pgSslAllowInsecure && config.env === 'production') {
+    throw new Error('生产环境禁止 PGSSL_ALLOW_INSECURE=true');
+  }
+  return { rejectUnauthorized: !config.pgSslAllowInsecure };
 }
 
 /** 跑建表脚本 */
@@ -76,18 +112,37 @@ async function queryOne (text, params) {
  * 用法：await tx(async (client) => { ... })
  * 里面用 client.query，不要用外层的 query —— 否则不在同一事务里。
  */
-async function tx (fn) {
+async function runTx (fn) {
   const client = await pool.connect();
+  // pg-mem 3.0.14 的 ROLLBACK 不恢复已执行写操作，用其 O(1) 备份点补齐事务语义。
+  const backup = memoryMode && pgmemDb ? pgmemDb.backup() : null;
   try {
     await client.query('BEGIN');
     const out = await fn(client);
     await client.query('COMMIT');
     return out;
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch (e) { /* 回滚失败也要把原错误抛出去 */ }
+    if (backup) backup.restore();
+    else {
+      try { await client.query('ROLLBACK'); } catch (e) { /* 回滚失败也要把原错误抛出去 */ }
+    }
     throw err;
   } finally {
     client.release();
+  }
+}
+
+async function tx (fn) {
+  if (!memoryMode) return runTx(fn);
+  // pg-mem 不实现行锁且 MAX(id)+1 会竞争；串行事务避免自检产生伪并发失败。
+  const previous = memoryTxQueue;
+  let release;
+  memoryTxQueue = new Promise(function (resolve) { release = resolve; });
+  await previous;
+  try {
+    return await runTx(fn);
+  } finally {
+    release();
   }
 }
 
@@ -97,17 +152,26 @@ async function close () {
   pool = null;
   pgmemDb = null;
   memoryMode = false;
+  config.useMemoryDb = false;
 }
 
 function isMemory () {
   return memoryMode;
 }
 
-/** LIMIT 的安全内联：一律整数，不接受任何字符串 */
-function limit (n, fallback) {
+/**
+ * LIMIT 的安全内联：一律整数，不接受任何字符串
+ *
+ * ⚠️ 之前一律截到 200 —— 统计接口传 size=1000 也只回 200 条，
+ *    库里 214 条经验时统计报「200」。
+ *    现在上限可配置（LIST_MAX_LIMIT，默认 500），
+ *    而统计与重建索引这类内部调用改走 SQL 聚合 / 分页，不再靠放大 size。
+ */
+function limit (n, fallback, max) {
   const v = Number(n);
   if (!isFinite(v) || v <= 0) return fallback || 20;
-  return Math.min(Math.floor(v), 200);
+  const cap = max || config.listMaxLimit;
+  return Math.min(Math.floor(v), cap);
 }
 
 /**
@@ -182,6 +246,7 @@ module.exports = {
   tx: tx,
   close: close,
   applySchema: applySchema,
+  sslConfig: sslConfig,
   isMemory: isMemory,
   limit: limit,
   arrayLiteral: arrayLiteral,

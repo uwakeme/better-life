@@ -13,8 +13,9 @@ const usersDao = require('../dao/users');
 const fbDao = require('../dao/feedbacks');
 const expDao = require('../dao/experiences');
 const fbService = require('../services/feedbacks');
-const { requireAuth, userKey, rateLimit } = require('../middleware/auth');
-const { fail } = require('../middleware/error');
+const { requireAuth, userKey } = require('../middleware/auth');
+const { rateLimit } = require('../middleware/rate-limit');
+const { fail, assertId } = require('../middleware/error');
 
 const router = express.Router();
 
@@ -25,13 +26,13 @@ function ok (res, data) {
 /** GET /api/me */
 router.get('/api/me', requireAuth, async function (req, res, next) {
   try {
-    const favorites = await usersDao.listFavorites(req.user.openid, { size: 500 });
-    const mine = await fbDao.listMine(req.user.openid);
+    const favorites = await usersDao.countFavorites(req.user.openid);
+    const mine = await fbDao.countMine(req.user.openid);
     ok(res, {
       user: { openid: req.user.openid, role: req.user.role, nickname: req.user.nickname },
       metrics: {
-        favorites: favorites.length,
-        myFeedbacks: mine.length
+        favorites: favorites,
+        myFeedbacks: mine
       }
     });
   } catch (e) {
@@ -43,24 +44,23 @@ router.get('/api/me', requireAuth, async function (req, res, next) {
 router.get('/api/me/favorites', requireAuth, async function (req, res, next) {
   try {
     const q = req.query || {};
-    const items = await usersDao.listFavorites(req.user.openid, {
+    const list = await usersDao.listFavorites(req.user.openid, {
+      page: q.page,
       size: q.size,
-      categoryId: q.categoryId
+      categoryId: q.categoryId,
+      sort: q.sort
     });
+    const items = list.items;
     /* 收藏列表也要带要点与标签，卡片才显示得对 */
     const ids = items.map(function (i) { return i.id; });
     const pointMap = await expDao.listPointsByExperience(ids);
-    const allTags = await require('../dao/catalog').listTags();
+    const tagMap = await expDao.tagNamesFor(items.map(function (item) { return item.id; }));
     for (const item of items) {
       item.points = pointMap[String(item.id)] || [];
-      const names = [];
-      for (const t of allTags) {
-        if (item.tagIds && item.tagIds.indexOf(t.id) >= 0) names.push(t.name);
-      }
-      item.tagNames = names;
+      item.tagNames = tagMap[String(item.id)] || [];
       item.addedAt = item.favoritedAt;
     }
-    ok(res, { items: items, total: items.length });
+    ok(res, list);
   } catch (e) {
     next(e);
   }
@@ -69,8 +69,9 @@ router.get('/api/me/favorites', requireAuth, async function (req, res, next) {
 /** POST /api/me/favorites/:id */
 router.post('/api/me/favorites/:id', requireAuth, async function (req, res, next) {
   try {
-    const exp = await expDao.getById(req.params.id);
-    if (!exp) throw fail('NOT_FOUND', '这条经验不存在');
+    /* 草稿不该能被收藏 —— 收藏是读者侧动作，草稿还没发布 */
+    const exp = await expDao.getById(assertId(req.params.id), { publishedOnly: true });
+    if (!exp) throw fail('NOT_FOUND', '这条经验不存在或已下线');
     await usersDao.addFavorite(req.user.openid, exp.id);
     ok(res, { ok: true });
   } catch (e) {
@@ -101,7 +102,7 @@ router.post(
     try {
       if (req.user.role === 'admin') throw fail('FORBIDDEN', '管理员不参与投票');
       const useful = !!(req.body && req.body.useful);
-      const exp = await expDao.getById(req.params.id);
+      const exp = await expDao.getById(assertId(req.params.id));
       if (!exp || exp.status !== 'published') throw fail('NOT_FOUND', '这条经验不存在或已下线');
       const out = await usersDao.setVote(req.user.openid, exp.id, useful);
       ok(res, {
