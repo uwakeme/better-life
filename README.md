@@ -14,7 +14,6 @@
 | --- | --- |
 | [`docs/better-life-design.md`](docs/better-life-design.md) | 产品定义、内容模型、数据模型、搜索方案、API、开发计划 —— 动手写代码前必读 |
 | 设计文档 [§19 修订记录](docs/better-life-design.md) | 每轮审查之后改了什么 —— 审查报告文件不单独留 |
-| [`docs/miniprogram-registration.md`](docs/miniprogram-registration.md) | 注册 / 备案 / 提审时照填小程序名称、简称、头像与简介 —— 填表前先看自查清单 |
 | [`server/README.md`](server/README.md) | 后端怎么起、环境变量、怎么灌种子数据 |
 | [`design/README.md`](design/README.md) | 原型怎么打开、每条设计决策落在哪个文件、哪些功能做了哪些没做 |
 | [`design/index.html`](design/index.html) | 原型本体，浏览器直接打开即可（纯静态，无构建） |
@@ -37,8 +36,7 @@ better-life/
 ├─ assets/                     tabBar 图标、图标资源与品牌头像（brand/）
 ├─ data/                       演示数据（32 条经验 / 9 领域 / 38 标签 / 62 条依据）
 ├─ docs/
-│  ├─ better-life-design.md    产品与技术设计文档（v1.8）
-│  └─ miniprogram-registration.md  小程序注册四栏与填表前的自查清单
+│  └─ better-life-design.md    产品与技术设计文档（v1.8）
 ├─ server/                     后端（Node + Express + PostgreSQL/pgvector，pg-mem 可替）
 │  ├─ src/                     config / db / dao / services / middleware / routes
 │  ├─ scripts/                 seed.js / selftest.js / http-test.js / reindex.js / cases.js
