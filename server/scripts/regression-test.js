@@ -19,6 +19,7 @@ const wechat = require('../src/services/wechat');
 const fbDao = require('../src/dao/feedbacks');
 const fbService = require('../src/services/feedbacks');
 const seccheck = require('../src/services/seccheck');
+const { toCamel, toDateOnly } = require('../src/lib/to-camel');
 const { seed } = require('./seed');
 
 let passed = 0;
@@ -637,6 +638,30 @@ async function main () {
       res = await callback('trace-one', 'pass', 'nonce-no-config');
       assert.equal(res.status, 403);
     } finally { config.mediaCallbackToken = oldToken; }
+  });
+
+  await test('日历日期一律按北京时间，与服务器时区无关', async function () {
+    // 北京时间 07:30（换成 UTC 还是前一天）要算在北京时间的当天
+    assert.equal(toDateOnly(new Date('2026-11-24T07:30:00+08:00')), '2026-11-24');
+    // DATE 列若被驱动按本地零点解析（如 Asia/Shanghai），日期不能变
+    assert.equal(toDateOnly(new Date('2026-06-03T16:00:00.000Z')), '2026-06-04');
+    // 纯日期本身就是日历日期，不做换算；带时区的 ISO 串按北京时间换算
+    assert.equal(toDateOnly('2026-06-04'), '2026-06-04');
+    assert.equal(toDateOnly('2026-11-24T18:00:00.000Z'), '2026-11-25');
+    assert.equal(toDateOnly(null), null);
+    assert.equal(toDateOnly(''), '');
+    // 走一遍转换层：内存库把 DATE 解析成 UTC 零点，时间戳是绝对时刻
+    const row = await db.queryOne(
+      "SELECT DATE '2026-06-04' AS reviewed_at, TIMESTAMPTZ '2026-11-23T23:00:00Z' AS created_at");
+    const converted = toCamel(row, { numeric: true });
+    assert.equal(converted.reviewedAt, '2026-06-04');
+    assert.equal(converted.createdAt, '2026-11-24');
+    // 没填核查日期时默认是北京时间的今天
+    const before = toDateOnly(new Date());
+    const saved = await expService.save({ title: '默认核查日期', status: 'draft' });
+    const after = toDateOnly(new Date());
+    const reviewedAt = (await expDao.getById(saved.id)).reviewedAt;
+    assert.ok(reviewedAt === before || reviewedAt === after, reviewedAt);
   });
 
   await new Promise(function (resolve) { server.close(resolve); });

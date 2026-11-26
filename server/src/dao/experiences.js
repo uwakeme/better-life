@@ -13,7 +13,7 @@
  *      这条约束对真实 PG 也成立：写法统一，行为一致。
  */
 const db = require('../db');
-const { toCamel, toCamelList } = require('../lib/to-camel');
+const { toCamel, toCamelList, toDateOnly } = require('../lib/to-camel');
 
 /**
  * 批量取多条经验的标签名
@@ -324,7 +324,8 @@ async function save (exp, client) {
   const keywords = Array.isArray(exp.searchKeywords) ? exp.searchKeywords : [];
   const status = exp.status || 'draft';
   const confidence = exp.confidence || 'normal';
-  const reviewedAt = exp.reviewedAt || new Date().toISOString().slice(0, 10);
+  /* 没填核查日期时默认是「今天」—— 按北京时间的今天算，不按 UTC */
+  const reviewedAt = exp.reviewedAt || toDateOnly(new Date());
   const nextReviewAt = exp.nextReviewAt === undefined ? null : exp.nextReviewAt;
 
   if (isNew) {

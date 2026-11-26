@@ -24,6 +24,9 @@ let pgmemDb = null;
 let memoryMode = false;
 let memoryTxQueue = Promise.resolve();
 
+/** PostgreSQL 里 DATE 类型的 oid */
+const DATE_TYPE_OID = 1082;
+
 /**
  * 内存库下把 schema 里的 vector 类型换成 TEXT
  * 真实 PG 里 vector 是 pgvector 的类型；pg-mem 没有这个域。
@@ -58,7 +61,12 @@ async function init (options) {
     await applySchema();
     return { mode: 'memory' };
   }
-  const { Pool } = require('pg');
+  const { Pool, types } = require('pg');
+  /* DATE 列原样返回字符串，不让驱动按服务器时区解析成本地零点的 Date ——
+     那样再取日期就取决于进程时区（Asia/Shanghai 下会差一天）。
+     必须在建连接池之前设：客户端在构造时拷贝一份解析器表。
+     内存库走 pg-mem 自己的类型实现，不经过这里，由转换层按北京时间兜住。 */
+  types.setTypeParser(DATE_TYPE_OID, function (value) { return value; });
   pool = new Pool({
     connectionString: config.databaseUrl,
     ssl: sslConfig(),

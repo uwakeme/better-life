@@ -17,35 +17,52 @@ const INT_COLUMNS = new Set([
 ]);
 
 /**
- * 日期列：统一转成 YYYY-MM-DD 字符串
+ * 日期列：统一转成 YYYY-MM-DD 字符串，一律按北京时间
  *
  * ⚠️ 数据库的 DATE 列会被驱动解析成 Date 对象，再序列化到接口里
  *    就变成 '2026-10-12T00:00:00.000Z' 这种带时区的串 ——
  *    界面直接显示这串，编辑页的日期输入框里也塞着它。
- *    真库上还会因为会话时区差一天。
  *
- * 在这里统一处理，而不是依赖各驱动的类型解析器：
- *    pg 的 setTypeParser 管得到真库，管不到 pg-mem（走自己的类型推断）。
- *    转换层是两边共用的唯一出口，在这里切最稳。
+ * 项目只面向国内用户，日历日期固定按北京时间取，不跟服务器时区走。
+ * 之前这里用 toISOString() 取日期，那是按 UTC 算的：服务器时区为 Asia/Shanghai 时，
+ * DATE 列的 2026-06-04 被驱动解析成本地零点（UTC 的前一天 16:00），取出来就成了 2026-06-03；
+ * 北京时间 0 点到 8 点的时间戳也会算到前一天。
+ * 中国不实行夏令时，固定加 8 小时即可，与进程时区无关。
+ *
+ * 两个后端各走一条路，结果一致：
+ *    - 真库：db.js 把 DATE 的类型解析器设成原样返回字符串，日期不经过 Date。
+ *    - 内存库：pg-mem 不认 pg 的类型解析器，DATE 仍是 Date（UTC 零点），加 8 小时后还是同一天。
+ * 时间戳列（updated_at 等）是绝对时刻，两个后端都按加 8 小时后的日期算。
  */
 const DATE_COLUMNS = new Set([
   'reviewedAt', 'nextReviewAt', 'publishedAt', 'createdAt', 'updatedAt',
   'repliedAt', 'mediaCheckedAt', 'lastSeenAt'
 ]);
 
-/** Date / 日期串 → YYYY-MM-DD */
+/** 北京时间比 UTC 快 8 小时（固定，没有夏令时） */
+const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+/** 某个时刻在北京时间是哪一天 —— 与服务器时区无关 */
+function beijingDate (date) {
+  const shifted = new Date(date.getTime() + BEIJING_OFFSET_MS);
+  /* 加 8 小时后超出 Date 取值范围的极端时刻，退回原值 */
+  if (isNaN(shifted.getTime())) return date.toISOString().slice(0, 10);
+  return shifted.toISOString().slice(0, 10);
+}
+
+/** Date / 日期串 → YYYY-MM-DD（北京时间） */
 function toDateOnly (value) {
   if (value === null || value === undefined || value === '') return value;
   if (value instanceof Date) {
     if (isNaN(value.getTime())) return value;
-    return value.toISOString().slice(0, 10);
+    return beijingDate(value);
   }
   const s = String(value);
-  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
-  if (m) return m[1];
+  /* 纯日期本身就是日历日期（真库 DATE 列的原样值），不做任何时区换算 */
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   const d = new Date(s);
   if (isNaN(d.getTime())) return value;
-  return d.toISOString().slice(0, 10);
+  return beijingDate(d);
 }
 
 /** snake_case → camelCase */
@@ -122,6 +139,7 @@ module.exports = {
   toCamelList: toCamelList,
   toRow: toRow,
   toDateOnly: toDateOnly,
+  beijingDate: beijingDate,
   INT_COLUMNS: INT_COLUMNS,
   DATE_COLUMNS: DATE_COLUMNS
 };

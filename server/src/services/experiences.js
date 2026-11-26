@@ -15,6 +15,7 @@ const catalogDao = require('../dao/catalog');
 const vectorStore = require('./vector-store');
 const embedding = require('./embedding');
 const sdDao = require('../dao/search-documents');
+const { toDateOnly } = require('../lib/to-camel');
 
 /** 发布前校验 —— 与设计文档 §4.1 同一套口径 */
 function validateForPublish (exp) {
@@ -245,11 +246,9 @@ async function reindexAll (opts) {
   return { documents: total, experiences: processed, failed: failed };
 }
 
+/** 经验的更新日期（北京时间）—— 与接口里返回的日期是同一套算法 */
 function dateOnly (value) {
-  if (!value) return '';
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
-  const match = String(value).match(/^(\d{4}-\d{2}-\d{2})/);
-  return match ? match[1] : new Date(value).toISOString().slice(0, 10);
+  return value ? toDateOnly(value) : '';
 }
 
 /**

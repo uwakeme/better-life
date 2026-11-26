@@ -1057,6 +1057,10 @@ embedding 文本拼装规则（写死在 `services/search.js` 的 `buildEmbeddin
   超时（默认 15 秒，`OUTBOUND_TIMEOUT_MS` 可调）按「服务不可用」处理，不假装成功
 - **数据库连 TLS 要校验证书**：`PGSSL=1` 开启 TLS，默认使用系统 CA；需要私有 CA 时再配 `PGSSL_CA`。
   `PGSSL_ALLOW_INSECURE=1` 只允许显式开发调试，生产环境直接拒绝启动。
+- **日历日期一律按北京时间**：项目只面向国内用户，接口里的日期（更新时间、核查日期、反馈时间……）
+  固定按 UTC+8 取「哪一天」，不跟服务器时区走 —— 按 UTC 取的话，服务器时区为 Asia/Shanghai 时
+  `DATE` 列会差一天，北京时间 0 点到 8 点的时间戳会算到前一天。
+  统一在 `lib/to-camel.js` 的 `toDateOnly` 里做；真库的 `DATE` 列在 `db.js` 里设成原样返回字符串。
 
 ---
 
