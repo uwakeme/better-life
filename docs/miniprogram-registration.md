@@ -70,6 +70,20 @@
 - **小程序备案**：与域名 ICP 备案是两件事，都要办；工信部核验短信（12381）要在时限内回复。
 - **修改额度**：名称与头像一年内可改次数有限（官方口径为企业类型 1 次，个人主体同量级或更少）—— 一次定死。
 
+### 域名与服务器现状（2026-11-26 实测，别对着错误前提排查）
+
+| 项 | 实测结果 |
+| --- | --- |
+| DNS A 记录 | `better-life.uwakeme.top` → **124.223.39.252** |
+| 那台机器上跑的是 | **lyric_lab**（默认站点带 🎵 favicon，`/api/health` 返回 `{"code":0,"status":"ok"}`） |
+| 证书 | CN=lyric.lab.uwakeme.top，SAN 里**没有** better-life.uwakeme.top，且 **2026-09-01 已过期** |
+| better-life 的后端 | **尚未部署** —— `/api/categories`、`/api/experiences` 全是 Express 默认 404 |
+| 另一台机器 | 124.221.89.106（与 DNS 指的不是同一台）；`SERVER_HOST` secret 指向哪台需本人核对 |
+
+结论：**这个域名现在指着别的项目**。两条路二选一 —— ① 把 DNS 的 A 记录改指到 better-life 的部署机；
+② 把 better-life 部署到 124.223.39.252（那台已在跑 lyric_lab，是共享机，部署目录与 PM2 进程必须各占各的）。
+另外 better-life 需要**自己的证书**（覆盖 better-life.uwakeme.top），不能沿用 lyric.lab 那张。
+
 ## 6. 注册与上线进度
 
 **已就位**
@@ -87,6 +101,8 @@
 - [ ] 填**简称** `日子有方`
 - [ ] 服务类目选【工具-信息查询】
 - [ ] 提交小程序备案（主体 → 负责人 → 人脸核验 → 12381 短信核验）
+- [ ] **DNS**：把 `better-life.uwakeme.top` 的 A 记录指到 better-life 的部署机（现在指在跑 lyric_lab 的那台，见 §5）
+- [ ] **证书**：给 better-life.uwakeme.top 签自己的证书（现在这张是 lyric.lab 的、已过期、也不覆盖本域名）
 - [ ] 域名 ICP 备案完成后，在公众平台配 **request 合法域名** `https://better-life.uwakeme.top`
 - [ ] 生成**上传密钥**（公众平台 → 开发管理 → 开发设置 → 小程序代码上传），存成仓库 secret `WX_UPLOAD_PRIVATE_KEY`
 - [ ] 服务器 `.env` 补齐这几项 —— 流水线只在文件缺失时创建，且**绝不覆盖已有值**，缺项会在「预检生产配置」那一步明确报出来：
