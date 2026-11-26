@@ -70,18 +70,37 @@
 - **小程序备案**：与域名 ICP 备案是两件事，都要办；工信部核验短信（12381）要在时限内回复。
 - **修改额度**：名称与头像一年内可改次数有限（官方口径为企业类型 1 次，个人主体同量级或更少）—— 一次定死。
 
-## 6. 注册操作清单
+## 6. 注册与上线进度
+
+**已就位**
+
+- [x] AppID `wx3eeaacfff25f0d32` —— 已写进 `project.private.config.json`（**不入库**：设计文档里定了这条口径，AppID 放私有文件、AppSecret 永远不进代码，防 GitHub 密钥扫描误报），仓库 secret `WX_APP_ID` 也已配
+- [x] 头像 `assets/brand/avatar.png`（144×144）
+- [x] 简介定稿版（§2）
+- [x] 流水线 secrets：`SERVER_HOST` / `SERVER_PORT` / `SERVER_SSH_KEY` / `SERVER_USER`（环境「腾讯云」）、`DATABASE_URL` / `PUBLIC_URL` / `WX_APP_ID`（仓库级）
+
+**还差**
 
 - [ ] 商标网查「Wake」42 / 45 类
 - [ ] 微信内搜「今日有方」「日日有方」「Wake日子有方」查重
 - [ ] 填**名称** `Wake日子有方`（被驳回就换 §3 的微调名）
 - [ ] 填**简称** `日子有方`
-- [ ] 上传**头像** `assets/brand/avatar.png`
-- [ ] 填**介绍**（§2 定稿版）
 - [ ] 服务类目选【工具-信息查询】
 - [ ] 提交小程序备案（主体 → 负责人 → 人脸核验 → 12381 短信核验）
-- [ ] 域名 ICP 备案确认后，配合法域名 + 隐私保护指引
-- [ ] 拿到正式 AppID → 写进 `project.private.config.json` 与流水线 secrets `WX_APP_ID`
+- [ ] 域名 ICP 备案完成后，在公众平台配 **request 合法域名** `https://better-life.uwakeme.top`
+- [ ] 生成**上传密钥**（公众平台 → 开发管理 → 开发设置 → 小程序代码上传），存成仓库 secret `WX_UPLOAD_PRIVATE_KEY`
+- [ ] 服务器 `.env` 补齐这几项 —— 流水线只在文件缺失时创建，且**绝不覆盖已有值**，缺项会在「预检生产配置」那一步明确报出来：
+
+```
+NODE_ENV=production
+TRUST_PROXY=1                    # nginx 反代后按真实 IP 分限流桶
+WECHAT_APPID=wx3eeaacfff25f0d32
+WECHAT_SECRET=<AppSecret>        # 公众平台 → 开发管理 → 开发设置
+SECCHECK_MODE=real
+MEDIA_CALLBACK_TOKEN=<随机串>
+ADMIN_OPENIDS=<你的 openid>      # 逗号分隔，首次部署提成管理员
+TOKEN_SECRET=<随机串>            # 缺失时流水线会生成，已存在则不动
+```
 
 ## 7. 名称定稿后的连带修改
 
