@@ -19,7 +19,11 @@
       { "type": "folder", "value": "scripts" },
       { "type": "folder", "value": "docs" },
       { "type": "folder", "value": "design" },
-      { "type": "folder", "value": "node_modules" }
+      { "type": "folder", "value": "ci" },
+      { "type": "folder", "value": ".github" },
+      { "type": "folder", "value": "node_modules" },
+      { "type": "file", "value": "project.private.config.json" },
+      { "type": "file", "value": "README.md" }
     ]
   },
   "condition": {}

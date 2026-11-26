@@ -1,0 +1,51 @@
+name: CI
+
+# 这一层守的是「没人跑的那几支自检」——
+# WXML 规范、模块加载、种子数据自洽、检索行为、设计令牌、文案口径、
+# 页面结构、前后端契约、客户端行为。字段漂一个、空值当 0.00、来源标错，
+# 全靠这一层挡住。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+
+      # ⚠️ 必须先装服务端依赖：服务端自检走 pg-mem 起内存库，
+      # 依赖在 server/ 下（仓库根目录没有 package.json）。
+      - name: Install server dependencies
+        working-directory: ./server
+        run: npm ci
+
+      # 一条命令跑完 9 支仓库级断言 + 服务端用例与专项回归。
+      # 任何一支失败 → exit 1，失败那支的输出原样打出来。
+      - name: Repository self-checks
+        run: node scripts/verify-all.js
+
+      # npm test = selftest + regression-test + http-test。
+      # ⚠️ selftest 与 regression-test 在上一支里已经跑过一遍，这里重复是有意的：
+      #    npm test 是服务端自己声明的测试入口，往后服务端加新用例只会改这一处，
+      #    CI 不用跟着改。真正补上的是 http-test —— 它真起一个实例逐个打接口，
+      #    走的是真实 HTTP 通道，不是进程内调用。
+      - name: Backend self-test
+        working-directory: ./server
+        run: npm test
+
+      # 上传包体积：主包超 2MB 公众平台直接拒收。
+      # 这一支防的是「新加一个顶层目录忘了加进 packOptions.ignore」。
+      - name: Package size check
+        run: node scripts/check-package-size.js

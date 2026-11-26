@@ -1,0 +1,391 @@
+name: Deploy Backend
+
+# 后端部署：推 main 且动了 server/ 就部署。
+#
+# ⚠️ 与油走势同服务器，但目录、PM2 进程名、端口各占各的 ——
+#    这条流水线只碰 ${DEPLOY_DIR}/server、${DEPLOY_DIR}/data、${DEPLOY_DIR}/logs
+#    与 better-life-server 这一个进程，不动同机上的其他项目。
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      # 仓库根的 data/ 是种子的唯一事实源，服务端 seed.js 要读它 ——
+      # 改了它要跟着部署，否则服务器上的那份会跟仓库漂移。
+      - 'data/**'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: '是否灌一次种子数据（一次性操作；重复执行会因 slug 唯一约束报错）'
+        type: boolean
+        default: false
+
+# 同一个后端只能有一份部署在改文件、装依赖和重启进程。
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    # ⚠️ 必须声明 environment，Environment secrets 才会注入到 job 里。
+    # 不写这一行的话，${{ secrets.SERVER_HOST }} 之类会展开成空字符串，
+    # 表现为「ssh ... @ host」这种看着莫名其妙的用法错误。
+    environment: 腾讯云
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+
+      # 装全量依赖：自检需要 pg-mem（devDependencies）
+      - name: Install dependencies
+        working-directory: ./server
+        run: npm ci
+
+      # 部署前先跑自检：结构与 HTTP 契约不对就别部署了
+      - name: Run backend self-test
+        id: selftest
+        working-directory: ./server
+        run: npm test
+
+      - name: Write SSH key to file
+        run: |
+          echo "${{ secrets.SERVER_SSH_KEY }}" > /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+
+      # 部署前先把线上正在跑的那份代码备份下来。
+      # ⚠️ scp 是**覆盖**式上传：预检失败时旧进程虽然还活着，
+      # 磁盘上已经是新版本 —— PM2 的 autorestart 一触发就加载坏版本。
+      # 有备份才能在失败时真的退回去。
+      - name: Backup current version on server
+        id: backup
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          script: |
+            set -e
+            DEPLOY_DIR="${{ secrets.DEPLOY_DIR || '/home/ubuntu/deploy/better-life' }}"
+            rm -rf ${DEPLOY_DIR}/server/.rollback
+            mkdir -p ${DEPLOY_DIR}/server/.rollback
+            cd ${DEPLOY_DIR}/server
+            # 只备份会被覆盖的部分。node_modules 不备份：依赖很少变，
+            # 备份它又慢又占磁盘。
+            # ⚠️ .env 不备份：它是服务器上手工维护的（密钥、管理员 openid），
+            #    部署与回滚都不该碰它。
+            for item in src scripts package.json package-lock.json better-life-pm2.json; do
+              if [ -e "$item" ]; then cp -a "$item" ${DEPLOY_DIR}/server/.rollback/; fi
+            done
+            echo "已备份当前版本到 ${DEPLOY_DIR}/server/.rollback"
+
+      - name: Copy backend to server
+        run: |
+          ssh -o StrictHostKeyChecking=no -i /tmp/deploy_key -p ${{ secrets.SERVER_PORT || 22 }} ${{ secrets.SERVER_USER }}${{ secrets.SERVER_HOST }} "mkdir -p ${{ secrets.DEPLOY_DIR || '/home/ubuntu/deploy/better-life' }}/server ${{ secrets.DEPLOY_DIR || '/home/ubuntu/deploy/better-life' }}/logs ${{ secrets.DEPLOY_DIR || '/home/ubuntu/deploy/better-life' }}/data"
+          # server/src server/scripts 是后端代码（schema.sql 在 src/ 里）。
+          scp -o StrictHostKeyChecking=no -i /tmp/deploy_key -P ${{ secrets.SERVER_PORT || 22 }} -r ./server/src ./server/scripts ./server/package.json ./server/package-lock.json ./server/better-life-pm2.json ${{ secrets.SERVER_USER }}${{ secrets.SERVER_HOST }}:${{ secrets.DEPLOY_DIR || '/home/ubuntu/deploy/better-life' }}/server/
+          # 仓库根的 data/ 是种子的唯一事实源：服务端 seed.js 要读它。
+          # ⚠️ 传目录会踩「scp -r ./data host:.../data → data/data」的坑，
+          #    所以目标目录先建好，只传里面的文件。
+          scp -o StrictHostKeyChecking=no -i /tmp/deploy_key -P ${{ secrets.SERVER_PORT || 22 }} ./data/*.json ${{ secrets.SERVER_USER }}${{ secrets.SERVER_HOST }}:${{ secrets.DEPLOY_DIR || '/home/ubuntu/deploy/better-life' }}/data/
+
+      - name: Deploy to server via SSH
+        id: deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          envs: PATH,DATABASE_URL,SEED
+          script: |
+            set -e
+            DEPLOY_DIR="${{ secrets.DEPLOY_DIR || '/home/ubuntu/deploy/better-life' }}"
+
+            echo "确保日志目录存在..."
+            mkdir -p ${DEPLOY_DIR}/logs
+
+            echo "确保 .env 存在..."
+            # 只在缺失时创建，绝不覆盖服务器上手动维护的 .env
+            # 里面有 WECHAT_SECRET / TOKEN_SECRET / 管理员 openid 等，绝不能被 CI 覆盖
+            if [ ! -f "${DEPLOY_DIR}/server/.env" ]; then
+              {
+                echo "NODE_ENV=production"
+                echo "DATABASE_URL=${DATABASE_URL}"
+              } > ${DEPLOY_DIR}/server/.env
+              echo ">> 已创建初始 .env（仅含 NODE_ENV 与 DATABASE_URL）"
+              echo ">> 请手动补充 TOKEN_SECRET / WECHAT_APPID / WECHAT_SECRET / SECCHECK_MODE=real / MEDIA_CALLBACK_TOKEN / ADMIN_OPENIDS"
+            fi
+
+            # ⚠️ NODE_ENV 必须等于 production，否则服务端的生产校验整段不生效
+            #    （assertProductionConfig 在非 production 下直接 return）。
+            #    PM2 的 env 已经注入了 production，这里再兜一层：
+            #    .env 里没有就补上，有的是 development 就提个醒（PM2 的会盖掉它）。
+            if ! grep -Eq '^[[:space:]]*NODE_ENV=' ${DEPLOY_DIR}/server/.env; then
+              if [ -s ${DEPLOY_DIR}/server/.env ] && [ "$(tail -c 1 ${DEPLOY_DIR}/server/.env | wc -l)" -eq 0 ]; then
+                echo "" >> ${DEPLOY_DIR}/server/.env
+              fi
+              echo "NODE_ENV=production" >> ${DEPLOY_DIR}/server/.env
+              echo ">> .env 里缺 NODE_ENV，已补 production"
+            elif ! grep -Eq '^[[:space:]]*NODE_ENV=production[[:space:]]*$' ${DEPLOY_DIR}/server/.env; then
+              echo ">> ⚠️ .env 里的 NODE_ENV 不是 production（PM2 注入的环境变量会盖掉它，运行不受影响）"
+            fi
+
+            # ⚠️ 服务端启动时会强校验 TOKEN_SECRET（空密钥等于谁都能自签任意 openid）。
+            # 缺这个变量的话新版本会直接拒绝启动 —— 那时候线上就是「旧进程已停、新进程没起」。
+            # 所以在动进程之前先补上。
+            # ⚠️ 已有的值绝不替换：换了 TOKEN_SECRET 等于把所有人踢下线。
+            #    只在「键不存在」或「值为空」时追加。
+            #    （写成 TOKEN_SECRET="" 的那种空引号不在此列 —— 会被后面的配置预检拦下来并说清缺哪一项。）
+            if grep -Eq '^[[:space:]]*TOKEN_SECRET=[[:space:]]*$' ${DEPLOY_DIR}/server/.env; then
+              echo ">> .env 里的 TOKEN_SECRET 是空值"
+              NEED_TOKEN=1
+            elif grep -Eq '^[[:space:]]*TOKEN_SECRET=' ${DEPLOY_DIR}/server/.env; then
+              echo ">> .env 里已有 TOKEN_SECRET，保持不动"
+              NEED_TOKEN=0
+            else
+              NEED_TOKEN=1
+            fi
+            if [ "$NEED_TOKEN" = "1" ]; then
+              # 追加前先确认文件末尾有换行 —— 没有换行的话新密钥会粘到上一行后面，
+              # 那一行既不是合法键也不是合法值，下次部署还会再追加一次。
+              if [ -s ${DEPLOY_DIR}/server/.env ] && [ "$(tail -c 1 ${DEPLOY_DIR}/server/.env | wc -l)" -eq 0 ]; then
+                echo "" >> ${DEPLOY_DIR}/server/.env
+              fi
+              echo "TOKEN_SECRET=$(openssl rand -hex 32)" >> ${DEPLOY_DIR}/server/.env
+              echo ">> .env 里缺 TOKEN_SECRET，自动生成一个"
+            fi
+
+            echo "安装生产依赖..."
+            cd ${DEPLOY_DIR}/server
+            # ⚠️ 用 npm ci：严格按 package-lock.json 装，lock 与 package.json
+            # 对不上时直接失败。npm install 会自行改动 lock，
+            # 线上装出来的依赖版本可能和仓库里记录的不一样。
+            npm ci --omit=dev
+
+            echo "应用数据库结构..."
+            # schema.sql 全是 CREATE TABLE IF NOT EXISTS / CREATE OR REPLACE FUNCTION，重复执行安全。
+            # ⚠️ 放在重启之前：结构出错要趁旧进程还在的时候失败，
+            # 不然就变成「旧进程已停、新进程没起」了。
+            # ⚠️ search_documents 的向量列依赖 pgvector 扩展 ——
+            #    扩展没装的话这里会直接报错，那正是要在重启前暴露的问题。
+            node -e "var db=require('./src/db');db.init().then(function(m){console.log('结构已应用（'+m.mode+'）');return db.close()}).catch(function(e){console.error('建表失败：'+(e&&e.message?e.message:e));process.exit(1)})"
+
+            echo "预检生产配置..."
+            # 启动期的强校验（config.assertProductionConfig）在这里先跑一遍：
+            # 配置不全就在旧进程还活着的时候退出，天然就是回滚。
+            # ⚠️ 必须显式带 NODE_ENV=production —— 这个校验在非 production 下直接 return，
+            #    不带的话这一段等于什么都没查。
+            NODE_ENV=production node -e "var c=require('./src/config');c.warnRiskyConfig().forEach(function(w){console.warn('⚠ '+w)});c.assertProductionConfig();console.log('配置检查通过')"
+
+            # 种子数据只在明确要求时灌：seed.js 是普通 INSERT（不是 upsert），
+            # 重复执行会撞 slug 唯一约束。默认不灌。
+            if [ "${SEED}" = "true" ]; then
+              echo "灌种子数据..."
+              # seed.js 从部署目录的上一级读 data/*.json —— copy 那一步已经传上去了。
+              node scripts/seed.js
+            else
+              echo "跳过种子数据灌入..."
+              echo ">> 需要时手动触发部署并在输入里勾选 seed"
+            fi
+
+            echo "重启 PM2 进程..."
+            if [ ! -f "${DEPLOY_DIR}/server/better-life-pm2.json" ]; then
+              echo "错误: 未找到 better-life-pm2.json"
+              exit 1
+            fi
+            # 入口文件不在就早报错，并列出实际内容，别让 PM2 抛一句
+            # 「Script not found」让人猜半天
+            if [ ! -f "${DEPLOY_DIR}/server/src/index.js" ]; then
+              echo "错误: 入口文件不存在 ${DEPLOY_DIR}/server/src/index.js"
+              echo "实际目录内容："
+              ls -la ${DEPLOY_DIR}/server/ || true
+              echo "src 下："
+              ls -la ${DEPLOY_DIR}/server/src/ || true
+              exit 1
+            fi
+            # PM2 配置里的 cwd / 日志路径不能写死 —— 部署目录由 DEPLOY_DIR 决定，
+            # 写死了就会去错的地方找脚本（报 Script not found）。
+            # 这里按实际部署目录替换掉占位符。
+            sed "s#__DEPLOY_DIR__#${DEPLOY_DIR}#g" \
+              ${DEPLOY_DIR}/server/better-life-pm2.json > ${DEPLOY_DIR}/server/pm2.runtime.json
+            # ⚠️ 原来这里是 pm2 delete 再 pm2 start：
+            # 中间任何一步失败，线上就是「旧进程没了、新进程没起来」。
+            # 改成 restart：进程条目一直在，PM2 自己管重启与日志。
+            # ⚠️ restart 用的是 PM2 里存的进程配置，不读 pm2.runtime.json ——
+            #    改了 better-life-pm2.json（cwd / env / 端口）要手动
+            #    pm2 delete better-life-server 之后再部署一次才生效。
+            if pm2 describe better-life-server > /dev/null 2>&1; then
+              pm2 restart better-life-server --update-env
+            else
+              pm2 start ${DEPLOY_DIR}/server/pm2.runtime.json
+            fi
+            pm2 save
+
+            echo "部署完成"
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SEED: ${{ inputs.seed }}
+
+      # 健康检查在服务器上跑：runner 上的 127.0.0.1 是 runner 自己，不是服务器。
+      - name: Health check on server
+        id: health
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          envs: PUBLIC_URL
+          script: |
+            set -e
+            DEPLOY_DIR="${{ secrets.DEPLOY_DIR || '/home/ubuntu/deploy/better-life' }}"
+            # 端口从服务器上的 .env 读（只认纯数字，取不到就用默认 8080）
+            # ⚠️ 端口从应用自己的配置里取，不自己再解析一遍 .env：
+            #    config.js 的解析允许 "PORT = 9090"、"PORT=\"9090\"" 这类写法，
+            #    另写一套正则迟早跟它对不上 —— 对不上就是「探错端口」，
+            #    表现为服务好好的，探活却报就绪失败。
+            PORT=$(cd ${DEPLOY_DIR}/server && node -e "process.stdout.write(String(require('./src/config').port))" 2>/dev/null || true)
+            PORT=${PORT:-8080}
+
+            # ⚠️ 原来固定 sleep 8 然后探 /health：
+            #   /api/health 会真查一次库，通不通才决定 200 还是 503，
+            #   但固定 8 秒在慢机器上不够，快的机器上是白等。
+            #   现在轮询 —— 服务起没起来，以探活结果为准。
+            LOCAL_BASE="http://127.0.0.1:${PORT}"
+            echo "等待服务就绪（轮询 ${LOCAL_BASE}/api/health）..."
+            READY=0
+            for i in $(seq 1 30); do
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 5 "${LOCAL_BASE}/api/health" || echo "000")
+              if [ "$CODE" = "200" ]; then
+                READY=1
+                echo "✓ 服务已就绪（耗时约 $((i * 2)) 秒）"
+                break
+              fi
+              sleep 2
+            done
+            if [ "$READY" != "1" ]; then
+              echo "✗ 服务在 60 秒内没有就绪"
+              echo "--- pm2 状态 ---"
+              pm2 list || true
+              echo "--- 最近日志 ---"
+              pm2 logs better-life-server --lines 40 --nostream || true
+              exit 1
+            fi
+
+            # 外网域名再探一次：nginx 反代或证书有问题也要看得见。
+            # ⚠️ PUBLIC_URL 是可选的：第一次部署还没装 nginx 时会失败，
+            #    那种情况下先把 secret 留空，等域名通了再补。
+            if [ -n "${PUBLIC_URL}" ]; then
+              echo "检查外网地址 ${PUBLIC_URL} ..."
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 15 "${PUBLIC_URL}/api/health" || echo "000")
+              if [ "$CODE" = "200" ]; then
+                echo "✓ 外网就绪检查通过 (${PUBLIC_URL})"
+              else
+                echo "✗ 外网就绪检查失败 (HTTP $CODE) —— ${PUBLIC_URL}"
+                pm2 logs better-life-server --lines 40 --nostream || true
+                exit 1
+              fi
+            else
+              echo ">> 没配 PUBLIC_URL secret，跳过外网检查"
+            fi
+
+            # 只有本地与外网（配置了的话）都健康后才删除备份。
+            rm -rf ${DEPLOY_DIR}/server/.rollback
+            echo "✓ 部署健康，已清理回滚备份"
+        env:
+          PUBLIC_URL: ${{ secrets.PUBLIC_URL }}
+
+      # 任何一步失败都把线上退回到备份的那一版。
+      # ⚠️ 以前健康检查超时只是 exit 1：磁盘上留着坏版本，
+      # 进程一重启就加载坏版本 —— 「失败」等于把线上留着半残状态。
+      - name: Roll back to previous version
+        id: rollback
+        if: failure()
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          script: |
+            set -e
+            DEPLOY_DIR="${{ secrets.DEPLOY_DIR || '/home/ubuntu/deploy/better-life' }}"
+            if [ ! -d "${DEPLOY_DIR}/server/.rollback/src" ]; then
+              echo "没有可还原的备份，保持现状"
+              exit 0
+            fi
+            echo "部署未通过，还原上一个版本..."
+            cd ${DEPLOY_DIR}/server
+            rm -rf src scripts
+            cp -a ${DEPLOY_DIR}/server/.rollback/src ./src
+            if [ -e "${DEPLOY_DIR}/server/.rollback/scripts" ]; then
+              cp -a ${DEPLOY_DIR}/server/.rollback/scripts ./scripts
+            fi
+            for item in package.json package-lock.json better-life-pm2.json; do
+              if [ -e "${DEPLOY_DIR}/server/.rollback/$item" ]; then
+                cp -a "${DEPLOY_DIR}/server/.rollback/$item" ./
+              fi
+            done
+
+            # 代码与依赖必须成对回滚：不能把旧代码留在新依赖上。
+            # ⚠️ 但 npm ci 失败**不能**中断回滚 ——
+            #   中断就等于没回滚，线上还跑着这次部署的新版本。
+            #   记一条警告继续用旧代码重启，后面的探活会判定这一版能不能起来。
+            if ! npm ci --omit=dev; then
+              echo "⚠ 依赖恢复失败，继续用现有依赖重启旧代码（可能不兼容）"
+            fi
+            pm2 restart better-life-server --update-env
+            pm2 save
+
+            # ⚠️ 端口从应用自己的配置里取，不自己再解析一遍 .env：
+            #    config.js 的解析允许 "PORT = 9090"、"PORT=\"9090\"" 这类写法，
+            #    另写一套正则迟早跟它对不上 —— 对不上就是「探错端口」，
+            #    表现为服务好好的，探活却报就绪失败。
+            PORT=$(cd ${DEPLOY_DIR}/server && node -e "process.stdout.write(String(require('./src/config').port))" 2>/dev/null || true)
+            PORT=${PORT:-8080}
+            LOCAL_BASE="http://127.0.0.1:${PORT}"
+            READY=0
+            for i in $(seq 1 30); do
+              CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 --max-time 5 "${LOCAL_BASE}/api/health" || echo "000")
+              if [ "$CODE" = "200" ]; then
+                READY=1
+                echo "✓ 回滚后服务已就绪"
+                break
+              fi
+              sleep 2
+            done
+            if [ "$READY" != "1" ]; then
+              echo "✗ 回滚后探活仍非 200，保留备份 ${DEPLOY_DIR}/server/.rollback"
+              pm2 list || true
+              pm2 logs better-life-server --lines 40 --nostream || true
+              exit 1
+            fi
+
+            # 只有回滚后的健康检查通过，才允许删除备份。
+            rm -rf ${DEPLOY_DIR}/server/.rollback
+            echo "✓ 回滚健康，已清理回滚备份"
+
+      - name: Clean up SSH key
+        if: always()
+        run: rm -f /tmp/deploy_key
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## 部署结果"
+          echo "- 后端自检: ${{ steps.selftest.outcome }}"
+          echo "- 备份旧版本: ${{ steps.backup.outcome }}"
+          echo "- 服务器部署: ${{ steps.deploy.outcome }}"
+          echo "- 健康检查: ${{ steps.health.outcome }}"
+          echo "- 失败回滚: ${{ steps.rollback.outcome }}"

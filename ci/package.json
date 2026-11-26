@@ -1,0 +1,12 @@
+{
+  "name": "better-life-ci",
+  "version": "1.0.0",
+  "private": true,
+  "description": "better-life 生活经验库 · 小程序包上传到微信公众平台（miniprogram-ci 封装）",
+  "scripts": {
+    "upload": "node upload.js"
+  },
+  "dependencies": {
+    "miniprogram-ci": "2.1.31"
+  }
+}

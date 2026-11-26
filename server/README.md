@@ -97,7 +97,7 @@ node server/scripts/regression-test.js # 安全、并发、限流、索引与生
 ```
 
 两个接口脚本共用 `server/scripts/cases.js` 里的用例集，当前**各 168 项断言、33 组，全绿**；
-专项回归当前 **24 项全绿**，并由仓库根 `scripts/verify-all.js` 一并执行。
+专项回归当前 **25 项全绿**，并由仓库根 `scripts/verify-all.js` 一并执行。
 
 用例覆盖的是「内存库 + 关键词检索 + 成功路径」。**没有覆盖的**：向量检索路、
 所有错误路径的响应体细节、客户端到服务端的错误码传递、微信真环境的审核接口。
@@ -119,6 +119,7 @@ server/
 │  └─ middleware/              error.js / auth.js
 ├─ scripts/                    seed / selftest / http-test / regression-test / reindex / cases
 ├─ sql/seed.sql                生成物，可 review
+├─ better-life-pm2.json        PM2 进程配置（__DEPLOY_DIR__ 由部署时替换）
 └─ .env.example                环境变量样例
 ```
 
@@ -139,5 +140,32 @@ server/
 
 ## 部署相关的说明
 
-**本仓库不代跑部署动作。** 生产 AppID / AppSecret、备案域名、服务器、nginx 与证书
-按约定由本人执行；仓库里只留代码与配置样例。
+**服务器上的动作由本人执行**（装 PostgreSQL / pgvector、建目录、nginx 反代与证书）；
+仓库只留代码与配置样例。但**代码上线这一步已经自动化**：
+[`.github/workflows/deploy-backend.yml`](../.github/workflows/deploy-backend.yml)
+在 push main 且动了 `server/` 时跑完整条链路 ——
+
+```
+备份线上代码 → scp 覆盖 → npm ci --omit=dev
+  → 应用 schema.sql（建表，重启前，失败就退出）
+  → 预检生产配置（NODE_ENV=production 下跑 assertProductionConfig）
+  → 重启 PM2（better-life-server）→ 轮询 /api/health 探活
+  → 不健康就把备份那版换回来再重启
+```
+
+几个要点：
+
+- **建表在重启之前**：`schema.sql` 全是 `CREATE ... IF NOT EXISTS`，重复执行安全；
+  向量列依赖 pgvector 扩展，扩展没装会在这一步明确报错 —— 那时旧进程还在跑。
+- **`.env` 绝不覆盖**：服务器上的 `.env` 由本人维护。流水线只在它缺失时创建一份
+  （含 `NODE_ENV=production` 与 `DATABASE_URL`），缺 `TOKEN_SECRET` 时补一个，
+  **已存在的值绝不替换**。
+- **端口从应用自己的配置里取**（`require('./src/config').port`），不另写一套 `.env` 解析 ——
+  否则 `PORT = 9090` 这类写法会让探活探错端口。
+- **PM2 配置**：`better-life-pm2.json` 里的 `__DEPLOY_DIR__` 由部署时替换成实际目录。
+  ⚠️ `pm2 restart` 用的是 PM2 里存的进程配置、不读这个文件 ——
+  改了它（cwd / env / 端口）要手动 `pm2 delete better-life-server` 后再部署一次才生效。
+- **种子数据不自动灌**：`seed.js` 是普通 INSERT，重复执行会撞 slug 唯一约束。
+  需要时手动触发部署并在输入里勾上 `seed`。
+
+配置项与必需性见上表；CI 与发版流水线见仓库根 [README](../README.md) 的「自动化流程」。
